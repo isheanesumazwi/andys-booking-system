@@ -1,0 +1,392 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, Leaf, LoaderCircle, LogOut, Menu, Plus, Search, ShieldCheck, Wrench, X } from 'lucide-react';
+import supabase, { configurationError } from './supabaseClient.js';
+import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, validRegistration, validateBooking } from './utils.js';
+
+function Brand({ light = false }) {
+  return <a className={`brand ${light ? 'brand-light' : ''}`} href="/" aria-label="Andy's Beechwood Car Care home">
+    <span className="brand-mark"><Wrench size={23} /><Leaf size={13} /></span>
+    <span><strong>Andy's Beechwood</strong><small>CAR CARE</small></span>
+  </a>;
+}
+
+function Notice({ children, success = false }) {
+  return children ? <div className={`notice ${success ? 'notice-success' : ''}`} role={success ? 'status' : 'alert'}>{children}</div> : null;
+}
+
+function Field({ label, children, hint }) {
+  return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
+}
+
+function Spinner() { return <LoaderCircle className="spin" size={18} aria-hidden="true" />; }
+
+function BookingForm({ admin = false, onCreated }) {
+  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '' });
+  const [lookup, setLookup] = useState({ state: 'idle', message: '' });
+  const [retry, setRetry] = useState(0);
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
+  const registration = normalizeRegistration(form.reg_no);
+
+  useEffect(() => {
+    setConfirmed(false);
+    if (!validRegistration(registration)) {
+      setLookup({ state: 'idle', message: '' });
+      return;
+    }
+    const controller = new AbortController();
+    setLookup({ state: 'waiting', message: '' });
+    const timer = setTimeout(async () => {
+      setLookup({ state: 'loading', message: '' });
+      try {
+        const response = await fetch(`/api/vehicle?registration=${encodeURIComponent(registration)}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Vehicle lookup is unavailable. Please enter your vehicle details manually.');
+        if (controller.signal.aborted) return;
+        setForm((current) => ({ ...current, make: data.make, model: data.model, year: data.year || '', engine_capacity: data.engine_capacity || '' }));
+        setLookup({ state: 'found', message: `We found your ${data.make} ${data.model}.` });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setLookup({ state: 'failed', message: err.message });
+      }
+    }, 700);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [registration, retry]);
+
+  function change(key, value) {
+    setError('');
+    setForm((current) => ({ ...current, [key]: value, ...(key === 'reg_no' ? { make: '', model: '', year: '', engine_capacity: '' } : {}) }));
+    if (key === 'make' || key === 'model') {
+      setLookup((current) => current.state === 'found' ? { state: 'manual', message: 'Using your manually corrected vehicle details.' } : current);
+      setConfirmed(false);
+    }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    const validation = validateBooking(form);
+    if (validation) { setError(validation); return; }
+    if (lookup.state === 'found' && !confirmed) { setError('Please confirm that the vehicle details are correct.'); return; }
+    if (configurationError) { setError(configurationError); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const { error: dbError } = await supabase.rpc('request_booking', {
+        p_first_name: form.first_name.trim(),
+        p_last_name: form.last_name.trim(),
+        p_phone: form.phone.trim(),
+        p_reg_no: registration,
+        p_make: form.make.trim(),
+        p_model: form.model.trim(),
+        p_year: form.year ? Number(form.year) : null,
+        p_engine_capacity: form.engine_capacity.trim() || null,
+        p_booking_date: form.booking_date,
+        p_status: admin ? 'Booked' : 'Pending Confirmation',
+      });
+      if (dbError) throw dbError;
+      setSent(true);
+      onCreated?.();
+    } catch (err) {
+      setError(`Booking could not be saved: ${err.message}`);
+    } finally { setBusy(false); }
+  }
+
+  if (sent) return <div className="booking-success">
+    <span className="success-icon"><CheckCircle2 size={38} /></span>
+    <p className="eyebrow">ALL SET</p>
+    <h2>{admin ? 'Booking added.' : 'Request received.'}</h2>
+    <p>{admin ? 'The vehicle is now on your workshop agenda.' : 'Booking request sent! Andy will review your request shortly.'}</p>
+    <div className="confirmation-details"><strong className="registration">{registration}</strong><span>{dateLabel(form.booking_date)}</span></div>
+    {!admin && <p className="muted">This is a request, not a confirmed appointment. Andy will contact you on the phone number you provided.</p>}
+    <button className="button button-outline" onClick={() => { setSent(false); setForm({ first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '' }); }}>Make another booking <ArrowRight size={16} /></button>
+  </div>;
+
+  return <form onSubmit={submit} className="booking-form">
+    <fieldset disabled={busy}>
+      <div className="form-section-label"><span>01</span> YOUR DETAILS</div>
+      <div className="two-columns">
+        <Field label="First name"><input autoComplete="given-name" required maxLength={80} placeholder="e.g. James" value={form.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field>
+        <Field label="Last name"><input autoComplete="family-name" required maxLength={80} placeholder="e.g. Taylor" value={form.last_name} onChange={(e) => change('last_name', e.target.value)} /></Field>
+      </div>
+      <Field label="Phone number" hint="We'll use this to confirm your booking."><input type="tel" autoComplete="tel" required maxLength={25} placeholder="e.g. 07700 900123" value={form.phone} onChange={(e) => change('phone', e.target.value)} /></Field>
+      <div className="form-section-label"><span>02</span> YOUR VEHICLE</div>
+      <Field label="Vehicle registration">
+        <div className="registration-input"><span>UK</span><input required maxLength={10} autoCapitalize="characters" spellCheck={false} placeholder="AB12 CDE" value={form.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /><button type="button" aria-label="Look up vehicle registration" title="Look up vehicle" disabled={!validRegistration(registration) || lookup.state === 'loading'} onClick={() => setRetry((value) => value + 1)}>{lookup.state === 'loading' ? <Spinner /> : <Search size={19} />}</button></div>
+      </Field>
+      {lookup.state === 'loading' && <p className="lookup-status" role="status">Looking up your vehicle...</p>}
+      {lookup.message && <div className={`lookup-status ${lookup.state === 'found' ? 'lookup-found' : ''}`} role="status">{lookup.state === 'found' && <CheckCircle2 size={17} />} {lookup.message}</div>}
+      {lookup.state === 'found' && <label className="check-label"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Yes, this is my vehicle</label>}
+      <div className="two-columns">
+        <Field label="Make"><input required maxLength={100} placeholder="e.g. Ford" value={form.make} onChange={(e) => change('make', e.target.value)} /></Field>
+        <Field label="Model"><input required maxLength={100} placeholder="e.g. Focus" value={form.model} onChange={(e) => change('model', e.target.value)} /></Field>
+      </div>
+      {admin && <div className="two-columns">
+        <Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={form.year} onChange={(e) => change('year', e.target.value)} /></Field>
+        <Field label="Engine capacity (optional)"><input maxLength={50} placeholder="e.g. 1598 cc" value={form.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field>
+      </div>}
+      <div className="form-section-label"><span>03</span> PREFERRED DATE</div>
+      <Field label="When would you like to come in?" hint={admin ? 'This booking will be added as Booked.' : 'Your preferred date is subject to confirmation.'}><input aria-label="Preferred booking date" type="date" required min={localDate()} value={form.booking_date} onChange={(e) => change('booking_date', e.target.value)} /></Field>
+    </fieldset>
+    <Notice>{error}</Notice>
+    <button className="button button-primary button-wide" disabled={busy || lookup.state === 'loading' || lookup.state === 'waiting'}>{busy ? <Spinner /> : <CalendarDays size={18} />}{busy ? 'Saving booking...' : admin ? 'Add booking' : 'Request a booking'}{!busy && <ArrowRight size={18} />}</button>
+    {!admin && <p className="form-footer"><ShieldCheck size={14} /> Your details are only used to manage your booking.</p>}
+  </form>;
+}
+
+function PublicPage() {
+  return <div className="public-page">
+    <header className="public-header shell"><Brand /><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></header>
+    <main className="public-main shell">
+      <section className="hero">
+        <p className="eyebrow"><span className="tiny-line" /> YOUR LOCAL WORKSHOP</p>
+        <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
+        <p className="hero-description">A friendly face. Honest advice. A car that's ready for the road. Book your next visit with Andy's Beechwood Car Care.</p>
+        <div className="hero-features"><span><CheckCircle2 size={17} /> Personal service</span><span><CheckCircle2 size={17} /> Straightforward booking</span></div>
+        <div className="workshop-art" aria-hidden="true">
+          <div className="art-grid" /><div className="art-label"><span className="dot" /> A LITTLE CARE GOES A LONG WAY</div>
+          <svg viewBox="0 0 520 220" className="car-illustration" fill="none">
+            <path d="M77 149h365l-13-44-105-12-52-54H166l-48 61-38 14-3 35Z" fill="#dce5ce" stroke="#183c30" strokeWidth="4" strokeLinejoin="round" />
+            <path d="m166 49-35 51h177l-44-51h-98Z" fill="#f8f8ee" stroke="#183c30" strokeWidth="3" /><path d="M210 50v50m107 1 9 49M116 111l-7 40m102-40v39" stroke="#183c30" strokeWidth="3" />
+            <path d="M230 113h17M334 113h16M82 122h22m314-10h16" stroke="#183c30" strokeWidth="4" strokeLinecap="round" />
+            <path d="M61 152h393" stroke="#183c30" strokeWidth="5" strokeLinecap="round" />
+            <circle cx="151" cy="153" r="29" fill="#183c30" /><circle cx="151" cy="153" r="13" fill="#f5f2e9" /><circle cx="373" cy="153" r="29" fill="#183c30" /><circle cx="373" cy="153" r="13" fill="#f5f2e9" />
+            <path d="M79 189h357" stroke="#b4c2ad" strokeWidth="2" /><path d="m421 64 7-11m-3 24 14-2M97 64l-10-8" stroke="#a0af91" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <div className="art-caption"><Wrench size={16} /><span>Keeping you moving, one visit at a time.</span></div>
+        </div>
+      </section>
+      <section className="booking-card" aria-labelledby="booking-heading">
+        <div className="booking-card-header"><span className="small-icon"><CalendarDays size={21} /></span><span className="pill">LET'S GET YOU BOOKED IN</span></div>
+        <h2 id="booking-heading">Your next visit starts here.</h2><p className="muted">A few details, and we'll take it from there.</p>
+        <BookingForm />
+      </section>
+    </main>
+    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><span>Local care. Ready for the road.</span></footer>
+  </div>;
+}
+
+function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function login(event) {
+    event.preventDefault();
+    if (configurationError) { setError(configurationError); return; }
+    setBusy(true);
+    setError('');
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (authError) throw authError;
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+  return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><Brand /><div className="login-heading"><span className="small-icon"><ShieldCheck size={23} /></span><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back, Andy.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop owner only.</p></div></div>;
+}
+
+function Modal({ title, onClose, children }) {
+  const ref = useRef(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement;
+    const dialog = ref.current;
+    dialog.showModal();
+    return () => { dialog.close(); previous?.focus(); };
+  }, []);
+  return <dialog ref={ref} className="modal" aria-labelledby="modal-title" onCancel={(e) => { e.preventDefault(); close.current(); }}><header className="modal-header"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={21} /></button></header><div className="modal-body">{children}</div></dialog>;
+}
+
+function jobDraft(job) {
+  return { booking_date: job.booking_date, status: job.status, diagnosis_notes: job.diagnosis_notes || '', parts_ordered: job.parts_ordered || '', amount_due: String(job.amount_due ?? 0), payment_status: job.payment_status || 'Unpaid' };
+}
+
+function JobEditor({ job, onClose, onSaved }) {
+  const [draft, setDraft] = useState(() => jobDraft(job));
+  const [saved, setSaved] = useState(() => JSON.stringify(jobDraft(job)));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const savingRef = useRef(false);
+  const dirty = JSON.stringify(draft) !== saved;
+  const customer = job.vehicle?.customer;
+  const vehicle = job.vehicle;
+  const change = (key, value) => { setError(''); setDraft((current) => ({ ...current, [key]: value })); };
+  const save = useCallback(async () => {
+    if (savingRef.current) return false;
+    if (!draft.booking_date || !JOB_STATUSES.includes(draft.status) || !PAYMENT_STATUSES.includes(draft.payment_status)) {
+      setError('Please choose a date, job status, and payment status.'); return false;
+    }
+    if (!/^\d{1,8}(\.\d{1,2})?$/.test(draft.amount_due) || Number(draft.amount_due) > 99999999.99) {
+      setError('Enter a valid amount between 0 and 99,999,999.99 with up to two decimal places.'); return false;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    setError('');
+    try {
+      const { data, error: dbError } = await supabase.from('jobs').update({ ...draft, amount_due: Number(draft.amount_due) }).eq('id', job.id).select('id').single();
+      if (dbError) throw dbError;
+      if (!data) throw new Error('The job was not updated. Check your workshop permissions.');
+      setSaved(JSON.stringify(draft));
+      onSaved({ ...job, ...draft, amount_due: Number(draft.amount_due) });
+      return true;
+    } catch (err) { setError(`Changes could not be saved: ${err.message}`); return false; }
+    finally { savingRef.current = false; setSaving(false); }
+  }, [draft, job, onSaved]);
+  useEffect(() => {
+    if (!dirty || saving || error) return;
+    const timer = setTimeout(() => { void save(); }, 1000);
+    return () => clearTimeout(timer);
+  }, [dirty, saving, error, save]);
+  const close = () => {
+    if (savingRef.current) { setError('Please wait for your changes to finish saving.'); return; }
+    if (dirty && !window.confirm('Your changes have not been saved. Close and discard them?')) return;
+    onClose();
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  return <Modal title="Job record" onClose={close}>
+    <div className="job-summary"><strong className="registration">{vehicle?.reg_no || 'No registration'}</strong><div><h3>{vehicle?.make} {vehicle?.model}</h3><p>{customer?.first_name} {customer?.last_name}{vehicle?.year ? ` / ${vehicle.year}` : ''}{vehicle?.engine_capacity ? ` / ${vehicle.engine_capacity}` : ''}</p></div></div>
+    {customer?.phone && <a className="phone-link" href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`}>{customer.phone} <ArrowRight size={15} /></a>}
+    <form onSubmit={async (e) => { e.preventDefault(); if (await save()) onClose(); }}>
+      <fieldset disabled={saving}>
+        <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job in the agenda."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && draft.status !== 'Pending Confirmation' && draft.status !== 'Completed') change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
+        <Field label="Diagnosis & service notes"><textarea rows={5} maxLength={10000} placeholder="What's happening with this vehicle?" value={draft.diagnosis_notes} onChange={(e) => change('diagnosis_notes', e.target.value)} /></Field>
+        <Field label="Parts ordered"><textarea rows={3} maxLength={10000} placeholder="Parts, part numbers, supplier details..." value={draft.parts_ordered} onChange={(e) => change('parts_ordered', e.target.value)} /></Field>
+        <div className="two-columns"><Field label="Amount due (£)"><input type="number" min="0" max="99999999.99" step="0.01" required value={draft.amount_due} onChange={(e) => change('amount_due', e.target.value)} /></Field><Field label="Payment status"><select value={draft.payment_status} onChange={(e) => change('payment_status', e.target.value)}>{PAYMENT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
+      </fieldset>
+      <Notice>{error}</Notice><div className="editor-footer"><span className="save-state" role="status">{saving ? <><Spinner /> Saving...</> : dirty ? 'Unsaved changes' : <><Check size={16} /> All changes saved</>}</span><button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save & close'}</button></div>
+      <p className="muted small-text">Changes save automatically after you stop typing. Moving a pending request does not approve it.</p>
+    </form>
+  </Modal>;
+}
+
+function Status({ value }) {
+  return <span className={`status status-${value.toLowerCase().replaceAll(' ', '-')}`}><span />{value}</span>;
+}
+
+function Dashboard({ session }) {
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [date, setDate] = useState(localDate());
+  const [week, setWeek] = useState(localDate());
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [approving, setApproving] = useState(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [view, setView] = useState('agenda');
+  const requestRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const request = ++requestRef.current;
+    try {
+      const { data: allowed, error: permissionError } = await supabase.rpc('is_workshop_admin');
+      if (permissionError) throw permissionError;
+      if (!allowed) throw new Error('This account does not have workshop access. Add the owner to app_admins using the Supabase setup instructions.');
+      if (request !== requestRef.current) return;
+      setAuthorized(true);
+      const records = [];
+      for (let start = 0; ; start += 500) {
+        const { data, error: dbError } = await supabase.from('jobs').select('*, vehicle:vehicles(*, customer:customers(*))').order('booking_date').order('id').range(start, start + 499);
+        if (dbError) throw dbError;
+        records.push(...data);
+        if (data.length < 500) break;
+      }
+      if (request === requestRef.current) { setJobs(records); setError(''); }
+    } catch (err) { if (request === requestRef.current) setError(err.message); }
+    finally { if (request === requestRef.current) setLoading(false); }
+  }, []);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, 30000);
+    const focus = () => { void load(); };
+    window.addEventListener('focus', focus);
+    return () => { ++requestRef.current; clearInterval(timer); window.removeEventListener('focus', focus); };
+  }, [load]);
+
+  async function approve(job) {
+    setApproving(job.id);
+    try {
+      const { error: dbError } = await supabase.from('jobs').update({ status: 'Booked' }).eq('id', job.id).eq('status', 'Pending Confirmation').select('id').single();
+      if (dbError) throw dbError;
+      await load();
+    } catch (err) { setError(`Approval failed: ${err.message}`); }
+    finally { setApproving(null); }
+  }
+  async function logout() {
+    const { error: authError } = await supabase.auth.signOut();
+    if (authError) setError(`Sign out failed: ${authError.message}`);
+  }
+  const pending = jobs.filter((job) => job.status === 'Pending Confirmation');
+  const active = jobs.filter((job) => ['Booked', 'In Progress', 'Rescheduled'].includes(job.status));
+  const outstanding = jobs.filter((job) => job.payment_status !== 'Paid' && job.status !== 'Pending Confirmation').reduce((sum, job) => sum + Number(job.amount_due || 0), 0);
+  const filtered = jobs.filter((job) => {
+    if (job.status === 'Pending Confirmation') return false;
+    if (view === 'agenda' && job.booking_date !== date) return false;
+    if (view === 'payments' && (job.payment_status === 'Paid' || Number(job.amount_due) <= 0)) return false;
+    if (view === 'history' && job.status !== 'Completed') return false;
+    return `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name}`.toLowerCase().includes(search.toLowerCase().trim());
+  });
+  const savedJob = useCallback((updated) => setJobs((current) => current.map((job) => job.id === updated.id ? updated : job)), []);
+  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : 'Completed jobs';
+
+  return <div className="admin-layout">
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><Brand light /><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
+    <div className="admin-main">
+      <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
+      <main className="dashboard-content">
+        <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">Your bookings, your jobs, everything in one place.</p></div><button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button></div>
+        <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
+        <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>
+        {pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Reschedule / contact</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
+        <section className="agenda-panel">
+          <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
+          {view === 'agenda' && <><div className="calendar-controls"><button className="button button-outline button-small" onClick={() => { setDate(localDate()); setWeek(localDate()); }}>Today</button><label className="date-jump"><CalendarDays size={16} /><input type="date" aria-label="Go to agenda date" value={date} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setWeek(e.target.value); } }} /></label><div className="week-controls"><button className="icon-button" aria-label="Previous seven days" onClick={() => { setWeek(addDays(week, -7)); setDate(addDays(week, -7)); }}><ChevronLeft size={20} /></button><button className="icon-button" aria-label="Next seven days" onClick={() => { setWeek(addDays(week, 7)); setDate(addDays(week, 7)); }}><ChevronRight size={20} /></button></div></div><div className="date-tabs">{Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => { const count = active.filter((job) => job.booking_date === day).length; return <button key={day} aria-pressed={date === day} className={date === day ? 'date-active' : ''} onClick={() => setDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric' })}</strong><span>{count ? `${count} ${count === 1 ? 'job' : 'jobs'}` : 'No active jobs'}</span></button>; })}</div></>}
+          <div className="job-table"><div className="job-table-head"><span>VEHICLE / CUSTOMER</span><span>{view === 'agenda' ? 'JOB STATUS' : 'DATE / STATUS'}</span><span>PAYMENT</span><span>AMOUNT</span><span /></div>
+            {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <button className="job-row" key={job.id} onClick={() => setEditing(job)} aria-label={`Open job ${job.vehicle?.reg_no}`}><div className="vehicle-cell"><span className="car-cell-icon"><CarFront size={21} /></span><div><strong className="reg-text">{job.vehicle?.reg_no}</strong><span>{job.vehicle?.make} {job.vehicle?.model}</span><small>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</small></div></div><div className="job-status-cell">{view !== 'agenda' && <small>{dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>}<Status value={job.status} /></div><div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong><ChevronRight size={18} className="row-arrow" /></button>)}
+          </div><div className="agenda-footer"><span>{filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}{view === 'agenda' ? ' on this day' : ' in this view'}</span><span><span className="dot" /> Refreshes every 30 seconds</span></div>
+        </section>
+        <footer className="dashboard-footer">Andy's Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
+      </main>
+    </div>
+    {editing && <JobEditor key={editing.id} job={editing} onClose={() => setEditing(null)} onSaved={savedJob} />}
+    {creating && <Modal title="Add a workshop booking" onClose={() => { if (window.confirm('Close the booking form? Any unsent details will be lost.')) setCreating(false); }}><BookingForm admin onCreated={() => { setCreating(false); void load(); }} /></Modal>}
+  </div>;
+}
+
+export default function App() {
+  const admin = window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/');
+  const [session, setSession] = useState(null);
+  const [checking, setChecking] = useState(admin);
+  const [authError, setAuthError] = useState('');
+  useEffect(() => {
+    if (!admin || !supabase) { setChecking(false); return; }
+    let alive = true;
+    let authEventReceived = false;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!alive || authEventReceived) return;
+      if (error) setAuthError(error.message);
+      setSession(data.session);
+      setChecking(false);
+    }).catch((error) => { if (alive) { setAuthError(error.message); setChecking(false); } });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      authEventReceived = true;
+      if (alive) { setSession(nextSession); setAuthError(''); setChecking(false); }
+    });
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, [admin]);
+  if (!admin) return <PublicPage />;
+  if (checking) return <div className="app-loading"><Spinner /><p>Opening your workshop...</p></div>;
+  if (session) return <Dashboard key={session.user.id} session={session} />;
+  return <><Notice>{authError || configurationError}</Notice><Login /></>;
+}
