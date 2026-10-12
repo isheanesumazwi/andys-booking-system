@@ -1,6 +1,6 @@
 # Andy's Beechwood Car Care
 
-A mobile-first React / Vite / Tailwind application with Supabase authentication and database storage. Deploy the frontend and vehicle lookup function together on Vercel.
+A mobile-first React / Vite / Tailwind application with Supabase authentication and database storage. Deploy the frontend and vehicle lookup function together on Netlify or Vercel.
 
 ## Included
 
@@ -76,9 +76,23 @@ Copy the exact URL and parameter names from RapidAPI's **Code Snippets** tab. Th
 
 The RapidAPI key stays on the server. **Never** put it in a `VITE_` variable or browser request. The server restricts upstream requests to the configured HTTPS RapidAPI host, prevents redirects, has a 10-second timeout, and returns only the vehicle fields needed by the app.
 
-The key supplied in chat has been placed only in the ignored local environment file. **Rotate it before production**, and set the replacement as a server-only Vercel variable. Do not publish the local environment file.
+The key supplied in chat has been placed only in the ignored local environment file. **Rotate it before production**, and set the replacement as a server-only hosting variable. Do not publish the local environment file.
 
-## 4. Deploy on Vercel
+## 4. Deploy on Netlify Free (commercial use permitted)
+
+Netlify explicitly permits commercial projects on its Free plan. The current plan has **300 credits per month**, shared across production deploys, requests, bandwidth, and compute. Production deploys currently cost 15 credits each. The site can pause when the allowance is exhausted; this is not unlimited free hosting. Check [current pricing](https://www.netlify.com/pricing/) and [commercial-use guidance](https://www.netlify.com/blog/introducing-netlify-free-plan/) before deploying.
+
+1. Sign in to Netlify, choose **Add new project > Import an existing project**, and connect the `isheanesumazwi/andys-booking-system` GitHub repository. Stay on the **Free** plan.
+2. Deploy branch `main`. `netlify.toml` sets the build command to `npm run build`, output to `dist`, Node to 22, and the functions directory to `netlify/functions`.
+3. Before building, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables available to builds. Use your actual project URL and publishable key, not `.env.example` placeholders.
+4. If enabling vehicle lookup, add `RAPIDAPI_KEY`, `RAPIDAPI_HOST`, `VEHICLE_API_URL`, and any needed method/body variables with **Functions** scope (or all scopes). Keep these server-only; never use a `VITE_` prefix. Lookup remains an explicit manual-entry fallback without provider configuration.
+5. Deploy, then set Supabase Auth's **Site URL** to the assigned HTTPS `netlify.app` URL.
+6. Verify `/book`, `/admin`, and `/api/vehicle` on the deployment. The native function route handles `/api/vehicle`; the SPA fallback handles public/admin pages.
+7. Test login and the booking lifecycle against your actual database. Monitor credit usage in Netlify.
+
+`netlify/functions/vehicle.mjs` wraps the shared provider handler without changing the frontend API contract. No additional package or service-role key is needed. The existing Vite development middleware still supports local lookup.
+
+## 5. Deploy on Vercel
 
 1. Put the project in a private Git repository, excluding `.env.local`, `node_modules`, and `dist`.
 2. Import it into Vercel and select **Vite**: build `npm run build`, output `dist`.
