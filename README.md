@@ -2,6 +2,198 @@
 
 A mobile-first React / Vite / Tailwind application with Supabase authentication and database storage. Deploy the frontend and vehicle lookup function together on Netlify or Vercel.
 
+## Live app and repository
+
+- Customer booking page: https://andys-beechwood-car-care.netlify.app
+- Owner dashboard: https://andys-beechwood-car-care.netlify.app/admin
+- Private repository: https://github.com/isheanesumazwi/andys-booking-system
+
+Netlify is connected to the repository's `main` branch. A push or merge to `main` normally triggers a new production build and publishes the changes if the build succeeds. The GitHub repository remains private even though the booking website is public.
+
+## Mac quick start
+
+### Install once
+
+1. Install [Visual Studio Code](https://code.visualstudio.com/) or your preferred editor.
+2. Install Git through Apple's Command Line Tools. Open **Terminal**, run the following, and complete Apple's installation dialog:
+
+   ```bash
+   xcode-select --install
+   ```
+
+   If Terminal says the tools are already installed, continue. Full Xcode is not required.
+3. Install **Node.js 22 LTS** from [Node.js downloads](https://nodejs.org/en/download). Choose the macOS installer appropriate for your Mac. npm is included; do not install React, Vite, or Tailwind globally.
+4. For easy private-repository authentication, install [GitHub CLI](https://cli.github.com/). If you already use [Homebrew](https://brew.sh/), run `brew install gh`; otherwise use the installation options linked on the GitHub CLI site. Homebrew is optional.
+5. Restart Terminal, then check:
+
+   ```bash
+   git --version
+   node --version
+   npm --version
+   gh --version
+   ```
+
+   Use Node 22 to match the Netlify build environment. The Node installer and Git tools work on both Apple Silicon and Intel Macs.
+
+### Sign in and clone
+
+Authenticate directly with GitHub, not by putting passwords or tokens in source files:
+
+```bash
+gh auth login --hostname github.com --git-protocol https --web
+gh auth setup-git
+gh auth status
+```
+
+Follow the browser/device-code instructions and sign in as **isheanesumazwi**, or an account explicitly granted access to this private repository. If GitHub CLI already has a different account active, use `gh auth switch --hostname github.com --user isheanesumazwi` after signing in to the intended account.
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+git clone https://github.com/isheanesumazwi/andys-booking-system.git
+cd andys-booking-system
+npm ci
+cp .env.example .env.local
+```
+
+`npm ci` installs the exact dependencies recorded in `package-lock.json`. It requires no global framework installs. If you prefer not to install GitHub CLI, authenticate using GitHub Desktop or a GitHub SSH key instead; the remaining project commands are the same.
+
+### Configure your Mac's environment
+
+Open the cloned folder in VS Code with **File > Open Folder**, then edit `.env.local`:
+
+```dotenv
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-publishable-key
+```
+
+Replace both placeholders using your Supabase project's connection settings or the existing Netlify project's environment settings. The real `.env.local` is **not in GitHub**, so each computer needs its own copy. Never use a Supabase service-role/secret key in a `VITE_` variable.
+
+Keep the optional vehicle-provider variables blank until you have the verified RapidAPI request details; manual vehicle entry works without lookup. See the provider section below to enable it. Local files do not inherit Netlify environment variables automatically.
+
+**Important: local frontend does not mean local database.** If you use the production Supabase URL, bookings, approvals, notes, and payments changed on your Mac affect the live business database. Prefer a separate Supabase development project for experiments. For an existing configured project, do not rerun `setup.sql` just because you cloned the code. For a new development project, complete the Supabase setup section below and create a separate test owner account.
+
+### Start and check the app
+
+```bash
+npm run dev
+```
+
+Open the URL printed in Terminal (normally http://127.0.0.1:5173). `/book` opens customer intake; `/admin` opens owner login. Leave Terminal running and use **Control+C** to stop the server. Vite refreshes the browser when you save frontend edits; restart the server after editing `.env.local`.
+
+Before pushing changes, stop the dev server or open a second Terminal in the project folder and run:
+
+```bash
+npm test
+npm run build
+```
+
+To inspect the built frontend, run `npm run preview` and open its printed URL (normally http://127.0.0.1:4173). Preview does not run the Netlify/Vercel API functions; use `npm run dev` for normal local development and vehicle lookup. No separate Express server, local PostgreSQL install, Supabase CLI, or Netlify CLI is required for this workflow.
+
+## How the app is constructed
+
+| File or folder | Purpose / where to make changes |
+| --- | --- |
+| [`src/main.jsx`](src/main.jsx) | React entry point; mounts the app and loads its stylesheet. |
+| [`src/App.jsx`](src/App.jsx) | Public booking form, Supabase login, owner dashboard, approval queue, agenda, payment/history views, and autosaving job dialog. Routing currently uses the browser pathname, not a routing library. |
+| [`src/styles.css`](src/styles.css) | Tailwind import and custom responsive styling. Edit here for colours, spacing, layout, and mobile breakpoints. |
+| [`src/supabaseClient.js`](src/supabaseClient.js) | Creates the Supabase browser client from the two `VITE_SUPABASE_` environment variables. |
+| [`src/utils.js`](src/utils.js) | Booking validation, registration normalization, dates, currency, and supported statuses. |
+| [`server/vehicle.js`](server/vehicle.js) | Shared server-only RapidAPI request handling, response parsing, timeout, and validation. |
+| [`vite.config.js`](vite.config.js) | React/Tailwind build plugins and the local `/api/vehicle` development middleware. |
+| [`netlify/functions/vehicle.mjs`](netlify/functions/vehicle.mjs) | Production Netlify function exposing `/api/vehicle`; delegates to the shared server handler. |
+| [`netlify.toml`](netlify.toml) | Netlify build command, Node version, published `dist` directory, functions bundling, and SPA fallback. |
+| [`api/vehicle.js`](api/vehicle.js) / [`vercel.json`](vercel.json) | Alternative Vercel API adapter and routing configuration; not used for Netlify deployment. |
+| [`supabase/setup.sql`](supabase/setup.sql) | Database tables, owner access policies, transactional booking RPC, indexes, and update timestamp trigger. |
+| [`tests/`](tests/) | Node's built-in unit tests for validation, provider handling, and the Netlify function adapter. |
+| [`package.json`](package.json) / [`package-lock.json`](package-lock.json) | npm commands, dependency declarations, and reproducible dependency versions. |
+| [`.env.example`](.env.example) / [`.gitignore`](.gitignore) | Safe environment template and exclusions for secrets, dependencies, and generated builds. |
+| [`index.html`](index.html) | Browser document, title, description, and React mount point. |
+
+**Data flow:** the public form calls Supabase's `request_booking` RPC, which creates/reuses a customer and vehicle and inserts a pending job in one database transaction. Customers cannot read workshop records. Owner login uses Supabase Auth; `app_admins` and row-level security enforce access in the database. The dashboard reads related jobs/vehicles/customers and updates job lifecycle fields directly through the authorized Supabase client. Vehicle lookup goes through `/api/vehicle`, never directly from the browser to RapidAPI.
+
+**Security lives in Supabase too:** hiding a button or route is not a replacement for database policies. If you add a table, status, or new write action, update the validation, UI, and database constraints/policies together. Database changes are not deployed by Netlify; review and apply them separately in Supabase.
+
+## Maintaining and pushing changes from your Mac
+
+Set your commit identity once. Use your GitHub-verified email or GitHub's private `noreply` email:
+
+```bash
+git config --global user.name "Your name"
+git config --global user.email "YOUR_GITHUB_COMMIT_EMAIL"
+```
+
+### Recommended: work on a branch
+
+Start with a clean working tree. `git status` should show no uncommitted edits before switching branches or pulling. Commit your existing work or deliberately stash it first; do not discard changes you want to keep.
+
+```bash
+git status
+git switch main
+git pull --ff-only origin main
+git switch -c improve-booking-page
+```
+
+Edit and test locally, then:
+
+```bash
+npm test
+npm run build
+git diff
+git add src/App.jsx src/styles.css
+git diff --cached
+git commit -m "Improve booking page layout"
+git push -u origin improve-booking-page
+gh pr create --base main --fill
+```
+
+The `git add` example assumes you changed those two files; replace the paths with the actual files you intend to commit. Review staged changes and exclude credentials or customer data. Open the pull request on GitHub, review it, and merge it when ready. Merging into `main` triggers the live Netlify deployment. Netlify may also build deploy previews for pull requests.
+
+After merging, return to your main branch before starting another change:
+
+```bash
+git switch main
+git pull --ff-only origin main
+```
+
+### Simple alternative: push directly to main
+
+For a small change you have tested, you can work on `main` instead:
+
+```bash
+git switch main
+git pull --ff-only origin main
+# Edit the files, then:
+npm test
+npm run build
+git add README.md
+git diff --cached
+git commit -m "Update project documentation"
+git push origin main
+```
+
+Replace `README.md` with your actual changed files. **This publishes to the live site automatically** after a successful Netlify build. If push is rejected because GitHub has newer changes, stop and reconcile them with `git pull --rebase origin main` on a clean working tree; resolve any conflicts, rerun tests/build, and then push. Do not use `git push --force` on `main`.
+
+### Dependencies, deployment, and rollback
+
+- On another computer or after pulling dependency changes, run `npm ci` again. Do not copy `node_modules` between Windows and macOS.
+- To intentionally add a package, run `npm install package-name` (or `npm install -D package-name` for build/test tools). Commit **both** `package.json` and `package-lock.json`.
+- Do not commit `.env.local`, other secret environment files, `node_modules`, or `dist`. `.env.example` may contain variable names and placeholders only.
+- Changing `.env.local` affects only that Mac. Update production variables separately in Netlify, and rebuild for `VITE_` changes because those values are compiled into the frontend.
+- Watch **Netlify > Project > Deploys** after pushing. If the new build fails, inspect its deploy log; an already-published successful deployment normally remains live.
+- If a successfully deployed change is broken, restore a previous published deploy through Netlify, then revert the faulty commit in GitHub/Git so the next build does not reintroduce it. Reverting frontend code does not undo database writes or SQL migrations.
+- Each production deployment consumes Free-plan credits, including documentation-only commits unless a build-ignore rule is configured. Batch related changes and monitor usage; previews/builds/traffic can consume other metered resources too.
+
+### Common local problems
+
+- **`git`, `node`, `npm`, or `gh` not found:** finish the relevant installation, restart Terminal, and recheck the version commands.
+- **Repository not found / permission denied:** it is private. Check `gh auth status`, the active GitHub account, and repository access.
+- **Supabase not configured:** check `.env.local` names and values, save, then restart `npm run dev`.
+- **Owner access denied:** your Supabase Auth user must be listed in `app_admins` in the project your local environment points to.
+- **Vehicle lookup unavailable:** expected until server-only provider settings and the exact endpoint are configured; manually enter make/model.
+- **Port already in use:** open the alternate port Vite prints, or stop your earlier dev server with Control+C.
+- **Native dependency errors after moving computers:** run `npm ci` on the target machine. Do not skip install scripts as a normal fix. The Windows group-policy block encountered on the original computer does not imply the same restriction exists on your Mac.
+
 ## Included
 
 - `/` and `/book`: public booking requests, debounced vehicle lookup, manual vehicle entry, and confirmation.
@@ -16,7 +208,7 @@ There are no fabricated bookings or demo records. An empty dashboard means no co
 
 ## 1. Supabase setup (required)
 
-The supplied project URL and publishable key are configured in the local, git-ignored `.env.local`. A publishable key is intended for frontend use; it is **not** an admin/service-role key.
+The production project URL and publishable key are configured in Netlify. Each local clone needs its own git-ignored `.env.local` as described above. A publishable key is intended for frontend use; it is **not** an admin/service-role key.
 
 1. Open your project in Supabase and run [`supabase/setup.sql`](supabase/setup.sql) in **SQL Editor**. It supports the three existing tables from the project brief and retains their rows. It adds `app_admins`, the booking RPC, indexes, constraints, an update timestamp trigger, and owner-only policies.
 2. The script deliberately **replaces existing access policies and role grants on these four application tables**. Review it first if other applications use these tables. The transaction rolls back on failure. Existing rows must have supported status/payment values, non-negative amounts, and registrations unique after removing spaces and uppercasing. Resolve any conflicting existing data if the script reports a constraint/index error.
@@ -36,10 +228,10 @@ The supplied project URL and publishable key are configured in the local, git-ig
 
 ## 2. Run locally
 
-Use Node.js 22 or newer.
+Use Node.js 22 to match Netlify. Configure `.env.local` first; see the Mac quick start above.
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
@@ -50,13 +242,13 @@ npm test
 npm run build
 ```
 
-`npm run preview` previews the static production frontend only; it does not run Vercel API functions. Use `npm run dev` for local vehicle lookup.
+`npm run preview` previews the static production frontend only; it does not run Netlify or Vercel API functions. Use `npm run dev` for local vehicle lookup.
 
 ## 3. Configure the vehicle provider
 
 The supplied hostname does not identify the actual endpoint, request parameters, or response schema. Until the request example is supplied, the application explicitly offers manual make/model entry rather than calling a guessed endpoint.
 
-In `.env.local` for local development, or Vercel environment settings for production:
+In `.env.local` for local development, or Netlify/Vercel environment settings for production:
 
 ```dotenv
 RAPIDAPI_KEY=your-new-rapidapi-key
