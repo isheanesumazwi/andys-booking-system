@@ -1,5 +1,6 @@
 -- Run in Supabase SQL Editor. Existing customer, vehicle and job rows are retained.
 -- This replaces access policies on these three application tables.
+-- Then run booking-updates.sql to enable services, full amendments and deletion.
 begin;
 
 create table if not exists public.customers (

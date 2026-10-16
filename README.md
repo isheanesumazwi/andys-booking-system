@@ -69,7 +69,7 @@ VITE_SUPABASE_ANON_KEY=your-supabase-publishable-key
 
 Replace both placeholders using your Supabase project's connection settings or the existing Netlify project's environment settings. The real `.env.local` is **not in GitHub**, so each computer needs its own copy. Never use a Supabase service-role/secret key in a `VITE_` variable.
 
-Keep the optional vehicle-provider variables blank until you have the verified RapidAPI request details; manual vehicle entry works without lookup. See the provider section below to enable it. Local files do not inherit Netlify environment variables automatically.
+Configure the server-only DVSA variables from `.env.example` to enable registration lookup; manual vehicle entry works without lookup. See the provider section below. Local files do not inherit Netlify environment variables automatically.
 
 **Important: local frontend does not mean local database.** If you use the production Supabase URL, bookings, approvals, notes, and payments changed on your Mac affect the live business database. Prefer a separate Supabase development project for experiments. For an existing configured project, do not rerun `setup.sql` just because you cloned the code. For a new development project, complete the Supabase setup section below and create a separate test owner account.
 
@@ -99,18 +99,25 @@ To inspect the built frontend, run `npm run preview` and open its printed URL (n
 | [`src/styles.css`](src/styles.css) | Tailwind import and custom responsive styling. Edit here for colours, spacing, layout, and mobile breakpoints. |
 | [`src/supabaseClient.js`](src/supabaseClient.js) | Creates the Supabase browser client from the two `VITE_SUPABASE_` environment variables. |
 | [`src/utils.js`](src/utils.js) | Booking validation, registration normalization, dates, currency, and supported statuses. |
-| [`server/vehicle.js`](server/vehicle.js) | Shared server-only RapidAPI request handling, response parsing, timeout, and validation. |
+| [`server/vehicle.js`](server/vehicle.js) | Server-only DVSA OAuth/token caching and vehicle lookup, plus optional legacy RapidAPI support. |
+| [`src/HelpPage.jsx`](src/HelpPage.jsx) | Contact details, maps/directions, searchable FAQs, and service selection. |
+| [`src/MonthCalendar.jsx`](src/MonthCalendar.jsx) | Monday-first whole-month agenda calendar with booking and pending-request counts. |
 | [`vite.config.js`](vite.config.js) | React/Tailwind build plugins and the local `/api/vehicle` development middleware. |
 | [`netlify/functions/vehicle.mjs`](netlify/functions/vehicle.mjs) | Production Netlify function exposing `/api/vehicle`; delegates to the shared server handler. |
 | [`netlify.toml`](netlify.toml) | Netlify build command, Node version, published `dist` directory, functions bundling, and SPA fallback. |
 | [`api/vehicle.js`](api/vehicle.js) / [`vercel.json`](vercel.json) | Alternative Vercel API adapter and routing configuration; not used for Netlify deployment. |
 | [`supabase/setup.sql`](supabase/setup.sql) | Database tables, owner access policies, transactional booking RPC, indexes, and update timestamp trigger. |
-| [`tests/`](tests/) | Node's built-in unit tests for validation, provider handling, and the Netlify function adapter. |
+| [`supabase/booking-updates.sql`](supabase/booking-updates.sql) | Apply after setup: requested services, atomic owner amendments, and owner-only permanent booking deletion. |
+| [`tests/`](tests/) | Node tests for validation, calendar, providers and API adapters; isolated PGlite PostgreSQL migration/permission tests. No live database is used. |
 | [`package.json`](package.json) / [`package-lock.json`](package-lock.json) | npm commands, dependency declarations, and reproducible dependency versions. |
 | [`.env.example`](.env.example) / [`.gitignore`](.gitignore) | Safe environment template and exclusions for secrets, dependencies, and generated builds. |
 | [`index.html`](index.html) | Browser document, title, description, and React mount point. |
 
-**Data flow:** the public form calls Supabase's `request_booking` RPC, which creates/reuses a customer and vehicle and inserts a pending job in one database transaction. Customers cannot read workshop records. Owner login uses Supabase Auth; `app_admins` and row-level security enforce access in the database. The dashboard reads related jobs/vehicles/customers and updates job lifecycle fields directly through the authorized Supabase client. Vehicle lookup goes through `/api/vehicle`, never directly from the browser to RapidAPI.
+**Data flow:** the public form calls Supabase's `request_booking` RPC, which creates/reuses a customer and vehicle and inserts a pending job, including its requested service, in one database transaction. Customers cannot read workshop records. Owner login uses Supabase Auth; `app_admins` and row-level security enforce access. The dashboard uses the owner-only transactional `amend_booking` RPC for customer, vehicle and job corrections; approvals and confirmed permanent deletion use owner-gated table operations. Vehicle lookup goes through `/api/vehicle`, never directly from the browser to DVSA or RapidAPI.
+
+**Booking changes:** open a job or choose **Edit / delete booking** on a pending request. Edits autosave; changing a pending request does not approve it. Customer details are shared across that customer's bookings, and vehicle corrections apply to all visits for that vehicle. Changing to a registration already assigned to another vehicle is rejected rather than merging records. Deletion permanently removes only the selected job, including its notes and payment record; customer/vehicle records and other bookings remain.
+
+**Calendar and help:** choose **Whole month** in the workshop agenda, navigate months and select a day to see its confirmed jobs below. Calendar counts include pending and completed bookings; pending requests remain in the review queue. `/help` and `/about` provide workshop contact details, an embedded location map, directions and searchable starter FAQs. **Go now** opens Apple Maps on Apple devices or Google Maps elsewhere. The service dropdown offers the eight requested services and carries the selection into `/book`.
 
 **Security lives in Supabase too:** hiding a button or route is not a replacement for database policies. If you add a table, status, or new write action, update the validation, UI, and database constraints/policies together. Database changes are not deployed by Netlify; review and apply them separately in Supabase.
 
@@ -210,7 +217,7 @@ There are no fabricated bookings or demo records. An empty dashboard means no co
 
 The production project URL and publishable key are configured in Netlify. Each local clone needs its own git-ignored `.env.local` as described above. A publishable key is intended for frontend use; it is **not** an admin/service-role key.
 
-1. Open your project in Supabase and run [`supabase/setup.sql`](supabase/setup.sql) in **SQL Editor**. It supports the three existing tables from the project brief and retains their rows. It adds `app_admins`, the booking RPC, indexes, constraints, an update timestamp trigger, and owner-only policies.
+1. For a new project, run [`supabase/setup.sql`](supabase/setup.sql) in **SQL Editor**, then run [`supabase/booking-updates.sql`](supabase/booking-updates.sql). For an existing installation with the original setup already applied, run only the booking-updates migration before deploying this frontend. Both scripts retain existing rows. If you rerun setup later, rerun booking-updates afterwards because setup replaces table grants and policies.
 2. The script deliberately **replaces existing access policies and role grants on these four application tables**. Review it first if other applications use these tables. The transaction rolls back on failure. Existing rows must have supported status/payment values, non-negative amounts, and registrations unique after removing spaces and uppercasing. Resolve any conflicting existing data if the script reports a constraint/index error.
 3. In **Authentication > Users**, create Andy's email/password user (or use an existing one), and confirm the account. Disable public sign-ups in Supabase Auth settings; the app provides no sign-up screen.
 4. Run this separately, replacing the example email:
@@ -221,7 +228,7 @@ The production project URL and publishable key are configured in Netlify. Each l
    on conflict (user_id) do nothing;
    ```
 
-   Verify that exactly the intended owner appears in `app_admins`. Only allowlisted accounts can read records or update jobs; being authenticated alone is not enough.
+   Verify that exactly the intended owner appears in `app_admins`. Only allowlisted accounts can read, amend or delete bookings; being authenticated alone is not enough.
 5. Set the Auth **Site URL** to your deployed site. Add localhost if needed for development.
 
 **Public booking safety:** anonymous visitors cannot select any customer, vehicle, or job rows. They only call `request_booking`, which validates input and writes all records in one transaction with `Pending Confirmation`. Existing vehicles are reused only with a matching contact phone; a changed phone/vehicle ownership requires contacting the workshop. Names/phones on existing records are never overwritten by public intake. Admin intake uses the same RPC with `Booked`, which is owner-gated.
@@ -246,11 +253,33 @@ npm run build
 
 ## 3. Configure the vehicle provider
 
-The supplied hostname does not identify the actual endpoint, request parameters, or response schema. Until the request example is supplied, the application explicitly offers manual make/model entry rather than calling a guessed endpoint.
+### DVSA MOT History API (recommended)
+
+The supplied OAuth credential format is for the **DVSA MOT History API**, not DVLA Vehicle Enquiry. Its [authentication documentation](https://documentation.history.mot.api.gov.uk/mot-history-api/authentication/) and [OpenAPI specification](https://documentation.history.mot.api.gov.uk/mot-history-api/api-specification/) define the integration.
 
 In `.env.local` for local development, or Netlify/Vercel environment settings for production:
 
 ```dotenv
+VEHICLE_API_PROVIDER=dvsa
+DVSA_CLIENT_ID=your-client-id
+DVSA_CLIENT_SECRET="your-rotated-client-secret"
+DVSA_API_KEY=your-rotated-api-key
+DVSA_SCOPE_URL=https://tapi.dvsa.gov.uk/.default
+DVSA_TOKEN_URL=https://login.microsoftonline.com/a455b827-244f-4c97-b5b4-ce5d13b4d00c/oauth2/v2.0/token
+```
+
+Use the exact values issued by DVSA without line-wrapping or spaces inserted into URLs. Quote the client secret in dotenv files if it contains special characters; do not include those quote characters in hosting dashboard values. Rotate credentials shared in chat before production. Credentials are not included in source or notes, and no live provider call is made by the automated tests.
+
+The server obtains a bearer token with form-encoded client credentials, caches it per warm process until shortly before expiry, shares in-flight token requests, and retries once with a fresh token on HTTP 401. Lookup uses `GET https://history.mot.api.gov.uk/v1/trade/vehicles/registration/{registration}` with bearer authentication and `X-API-Key`. Only make/model/year/engine capacity are returned to the browser, not MOT history or tokens. Token requests are restricted to the Microsoft Entra HTTPS tenant-token URL and the DVSA scope; redirects are rejected and each upstream request has a 10-second timeout. No-match, throttling, missing configuration and provider failures are shown explicitly with manual-entry guidance.
+
+Restart Vite after changing local environment variables. Redeploy after changing hosting variables. Never prefix server credentials with `VITE_`. Enabling DVSA does not fall back silently to another provider.
+
+### Optional legacy RapidAPI provider
+
+Existing RapidAPI configurations remain supported. Set the provider explicitly to use them:
+
+```dotenv
+VEHICLE_API_PROVIDER=rapidapi
 RAPIDAPI_KEY=your-new-rapidapi-key
 RAPIDAPI_HOST=uk-vehicle-data1.p.rapidapi.com
 VEHICLE_API_URL=https://uk-vehicle-data1.p.rapidapi.com/EXACT_ENDPOINT?EXACT_PARAMETER={registration}
@@ -268,8 +297,6 @@ Copy the exact URL and parameter names from RapidAPI's **Code Snippets** tab. Th
 
 The RapidAPI key stays on the server. **Never** put it in a `VITE_` variable or browser request. The server restricts upstream requests to the configured HTTPS RapidAPI host, prevents redirects, has a 10-second timeout, and returns only the vehicle fields needed by the app.
 
-The key supplied in chat has been placed only in the ignored local environment file. **Rotate it before production**, and set the replacement as a server-only hosting variable. Do not publish the local environment file.
-
 ## 4. Deploy on Netlify Free (commercial use permitted)
 
 Netlify explicitly permits commercial projects on its Free plan. The current plan has **300 credits per month**, shared across production deploys, requests, bandwidth, and compute. Production deploys currently cost 15 credits each. The site can pause when the allowance is exhausted; this is not unlimited free hosting. Check [current pricing](https://www.netlify.com/pricing/) and [commercial-use guidance](https://www.netlify.com/blog/introducing-netlify-free-plan/) before deploying.
@@ -277,7 +304,7 @@ Netlify explicitly permits commercial projects on its Free plan. The current pla
 1. Sign in to Netlify, choose **Add new project > Import an existing project**, and connect the `isheanesumazwi/andys-booking-system` GitHub repository. Stay on the **Free** plan.
 2. Deploy branch `main`. `netlify.toml` sets the build command to `npm run build`, output to `dist`, Node to 22, and the functions directory to `netlify/functions`.
 3. Before building, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as environment variables available to builds. Use your actual project URL and publishable key, not `.env.example` placeholders.
-4. If enabling vehicle lookup, add `RAPIDAPI_KEY`, `RAPIDAPI_HOST`, `VEHICLE_API_URL`, and any needed method/body variables with **Functions** scope (or all scopes). Keep these server-only; never use a `VITE_` prefix. Lookup remains an explicit manual-entry fallback without provider configuration.
+4. For DVSA lookup, add `VEHICLE_API_PROVIDER=dvsa` and all five `DVSA_` variables above with **Functions** scope (or all scopes). Keep these server-only; never use a `VITE_` prefix. The optional RapidAPI configuration is described separately above. Lookup remains an explicit manual-entry fallback without provider configuration.
 5. Deploy, then set Supabase Auth's **Site URL** to the assigned HTTPS `netlify.app` URL.
 6. Verify `/book`, `/admin`, and `/api/vehicle` on the deployment. The native function route handles `/api/vehicle`; the SPA fallback handles public/admin pages.
 7. Test login and the booking lifecycle against your actual database. Monitor credit usage in Netlify.
@@ -301,6 +328,8 @@ Netlify explicitly permits commercial projects on its Free plan. The current pla
 
 - Complete the SQL setup and owner allowlist; test using an anonymous session and a non-owner authenticated account.
 - Make a test request, approve it, move its date, add diagnosis/parts, and verify its amount and payment status survive a reload.
+- Verify requested service persistence, owner-only contact/vehicle amendments, permanent deletion confirmation and removal after reload, and the month/day agenda on desktop and mobile.
+- Check contact links, maps/directions and FAQ search on `/help`.
 - Test a duplicate registration/date and an existing vehicle with a different phone.
 - Confirm vehicle lookup using the actual provider endpoint and subscription.
 - Enable provider spending limits and appropriate abuse controls (WAF/rate limiting and, if needed, CAPTCHA verified by a server function). The public booking RPC and lookup endpoint are intentionally public and do not yet include a distributed per-IP rate limiter or CAPTCHA.

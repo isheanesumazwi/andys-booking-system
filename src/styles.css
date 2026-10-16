@@ -199,6 +199,59 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 .editor-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 10px 0; }
 .save-state { color: #7d9370; font-size: 11px; display: flex; align-items: center; gap: 6px; }
 .small-text { font-size: 10px; }
+.public-nav { display: flex; gap: 22px; align-items: center; font-size: 12px; }
+.public-nav > a[aria-current="page"] { font-weight: 750; text-decoration: underline; text-underline-offset: 5px; }
+.booking-card h2 { font-weight: 800; }
+.help-main { padding-top: 30px; padding-bottom: 60px; }
+.help-heading { text-align: center; margin-bottom: 32px; }
+.help-heading .eyebrow { justify-content: center; }
+.help-heading h1 { font-size: clamp(30px, 4vw, 46px); margin: 16px 0; font-weight: 750; }
+.help-card { padding: 30px; background: white; border: 1px solid var(--border); border-radius: 14px; margin-bottom: 24px; }
+.help-card h2 { font-size: 21px; margin-bottom: 20px; font-weight: 700; }
+.contact-grid { display: grid; grid-template-columns: 1fr 1.3fr 1.3fr; gap: 28px; margin-bottom: 24px; }
+.contact-grid h3 { font-size: 15px; margin: 12px 0; font-weight: 650; }
+.contact-grid p, .contact-grid a:not(.button) { font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.contact-grid .button { margin-top: 12px; }
+.map-reference { display: block; margin-top: 10px; text-decoration: underline; }
+.workshop-map { width: 100%; height: 300px; border: 1px solid var(--border); border-radius: 8px; }
+.service-start { display: grid; grid-template-columns: 1fr 1fr auto; gap: 20px; align-items: center; }
+.service-start h2 { margin-bottom: 8px; }
+.service-start .field { margin: 0; }
+.faqs { max-width: 850px; margin-inline: auto; }
+.faqs details { border-top: 1px solid var(--border); padding: 18px 0; }
+.faqs summary { cursor: pointer; font-size: 14px; font-weight: 650; }
+.faqs details p { padding-top: 14px; font-size: 13px; line-height: 1.8; color: #627060; }
+.editor-warning { margin-bottom: 18px; }
+.delete-booking { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; display: flex; flex-wrap: wrap; gap: 14px; }
+.button-danger { background: #fff1ec; color: #954e36; border-color: #edc8bc; }
+.button-danger:hover:not(:disabled) { background: #fbe0d6; }
+.calendar-view-toggle { display: flex; flex-wrap: wrap; gap: 8px; padding: 20px 24px 0; }
+.calendar-view-toggle [aria-pressed="true"] { background: var(--green); color: white; }
+.calendar-month .date-tabs, .calendar-month .calendar-controls { display: none; }
+.month-calendar { padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.month-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; }
+.month-heading h3 { font-weight: 700; font-size: 18px; }
+.month-grid, .month-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.month-weekdays { text-align: center; font-size: 11px; padding-bottom: 10px; }
+.month-grid button { display: flex; flex-direction: column; gap: 6px; min-height: 85px; padding: 9px 4px; border: 1px solid var(--border); border-radius: 6px; background: #fcfdfa; color: var(--green); min-width: 0; }
+.month-grid strong { font-size: 15px; }
+.month-grid small, .month-grid span { font-size: 9px; overflow-wrap: anywhere; }
+.month-grid .outside-month { color: #788179; background: #f0f1ed; }
+.month-grid .month-selected { background: var(--green); color: white; }
+.month-grid [aria-current="date"] strong { text-decoration: underline; text-underline-offset: 4px; }
+.month-calendar > p { margin-top: 14px; }
+@media (max-width: 700px) {
+  .public-header { flex-wrap: wrap; gap: 15px; padding-top: 20px; padding-bottom: 20px; }
+  .public-nav { width: 100%; gap: 14px; flex-wrap: wrap; }
+  .public-nav .staff-link { margin-left: auto; }
+  .contact-grid, .service-start { grid-template-columns: 1fr; }
+  .help-card { padding: 22px; }
+  .contact-grid { gap: 24px; }
+  .month-calendar { padding: 18px 10px; }
+  .month-grid { gap: 3px; }
+  .month-grid button { min-height: 76px; padding: 8px 2px; }
+  .month-grid small, .month-grid span { font-size: 8px; }
+}
 @media (min-width: 1500px) { .public-main { padding-top: 65px; } .public-header { min-height: 125px; } }
 @media (max-width: 1150px) {
   .sidebar { width: 210px; padding-left: 16px; padding-right: 16px; }
