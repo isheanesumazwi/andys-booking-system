@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, Leaf, LoaderCircle, LogOut, Menu, Plus, Search, ShieldCheck, Wrench, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, LoaderCircle, LogOut, Menu, Plus, Search, ShieldCheck, Wrench, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
 import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, SERVICES, validRegistration, validateBooking } from './utils.js';
 import HelpPage from './HelpPage.jsx';
@@ -7,12 +7,6 @@ import MonthCalendar from './MonthCalendar.jsx';
 
 const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', service_type: '' };
 
-function Brand({ light = false }) {
-  return <a className={`brand ${light ? 'brand-light' : ''}`} href="/" aria-label="Andy's Beechwood Car Care home">
-    <span className="brand-mark"><Wrench size={23} /><Leaf size={13} /></span>
-    <span><strong>Andy's Beechwood</strong><small>CAR CARE</small></span>
-  </a>;
-}
 
 function Notice({ children, success = false }) {
   return children ? <div className={`notice ${success ? 'notice-success' : ''}`} role={success ? 'status' : 'alert'}>{children}</div> : null;
@@ -148,7 +142,7 @@ function BookingForm({ admin = false, onCreated }) {
 function PublicPage() {
   const help = ['/about', '/help'].includes(window.location.pathname.replace(/\/$/, ''));
   return <div className="public-page">
-    <header className="public-header shell"><Brand /><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
+    <header className="public-header shell"><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
     {help ? <HelpPage /> : <main className="public-main shell">
       <section className="hero">
         <p className="eyebrow"><span className="tiny-line" /> YOUR LOCAL WORKSHOP</p>
@@ -194,7 +188,7 @@ function Login() {
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
-  return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><Brand /><div className="login-heading"><span className="small-icon"><ShieldCheck size={23} /></span><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back, Andy.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop owner only.</p></div></div>;
+  return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><div className="login-heading"><span className="small-icon"><ShieldCheck size={23} /></span><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back, Andy.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop owner only.</p></div></div>;
 }
 
 function Modal({ title, onClose, children }) {
@@ -390,7 +384,7 @@ function Dashboard({ session }) {
   const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : 'Completed jobs';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><Brand light /><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
