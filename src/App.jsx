@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, Leaf, LoaderCircle, LogOut, Menu, Plus, Search, ShieldCheck, Wrench, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
-import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, validRegistration, validateBooking } from './utils.js';
+import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, SERVICES, validRegistration, validateBooking } from './utils.js';
+import HelpPage from './HelpPage.jsx';
+import MonthCalendar from './MonthCalendar.jsx';
+
+const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', service_type: '' };
 
 function Brand({ light = false }) {
   return <a className={`brand ${light ? 'brand-light' : ''}`} href="/" aria-label="Andy's Beechwood Car Care home">
@@ -21,7 +25,10 @@ function Field({ label, children, hint }) {
 function Spinner() { return <LoaderCircle className="spin" size={18} aria-hidden="true" />; }
 
 function BookingForm({ admin = false, onCreated }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '' });
+  const [form, setForm] = useState(() => {
+    const service = new URLSearchParams(window.location.search).get('service');
+    return { ...emptyBooking, service_type: SERVICES.includes(service) ? service : '' };
+  });
   const [lookup, setLookup] = useState({ state: 'idle', message: '' });
   const [retry, setRetry] = useState(0);
   const [confirmed, setConfirmed] = useState(false);
@@ -68,6 +75,7 @@ function BookingForm({ admin = false, onCreated }) {
     event.preventDefault();
     const validation = validateBooking(form);
     if (validation) { setError(validation); return; }
+    if (!SERVICES.includes(form.service_type)) { setError('Please tell us what work you need.'); return; }
     if (lookup.state === 'found' && !confirmed) { setError('Please confirm that the vehicle details are correct.'); return; }
     if (configurationError) { setError(configurationError); return; }
     setBusy(true);
@@ -84,6 +92,7 @@ function BookingForm({ admin = false, onCreated }) {
         p_engine_capacity: form.engine_capacity.trim() || null,
         p_booking_date: form.booking_date,
         p_status: admin ? 'Booked' : 'Pending Confirmation',
+        p_service_type: form.service_type,
       });
       if (dbError) throw dbError;
       setSent(true);
@@ -100,11 +109,12 @@ function BookingForm({ admin = false, onCreated }) {
     <p>{admin ? 'The vehicle is now on your workshop agenda.' : 'Booking request sent! Andy will review your request shortly.'}</p>
     <div className="confirmation-details"><strong className="registration">{registration}</strong><span>{dateLabel(form.booking_date)}</span></div>
     {!admin && <p className="muted">This is a request, not a confirmed appointment. Andy will contact you on the phone number you provided.</p>}
-    <button className="button button-outline" onClick={() => { setSent(false); setForm({ first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '' }); }}>Make another booking <ArrowRight size={16} /></button>
+    <button className="button button-outline" onClick={() => { setSent(false); setForm({ ...emptyBooking }); }}>Make another booking <ArrowRight size={16} /></button>
   </div>;
 
   return <form onSubmit={submit} className="booking-form">
     <fieldset disabled={busy}>
+      <Field label="Tell us what you need"><select required value={form.service_type} onChange={(e) => change('service_type', e.target.value)}><option value="">Please Select</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}</select></Field>
       <div className="form-section-label"><span>01</span> YOUR DETAILS</div>
       <div className="two-columns">
         <Field label="First name"><input autoComplete="given-name" required maxLength={80} placeholder="e.g. James" value={form.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field>
@@ -136,9 +146,10 @@ function BookingForm({ admin = false, onCreated }) {
 }
 
 function PublicPage() {
+  const help = ['/about', '/help'].includes(window.location.pathname.replace(/\/$/, ''));
   return <div className="public-page">
-    <header className="public-header shell"><Brand /><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></header>
-    <main className="public-main shell">
+    <header className="public-header shell"><Brand /><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
+    {help ? <HelpPage /> : <main className="public-main shell">
       <section className="hero">
         <p className="eyebrow"><span className="tiny-line" /> YOUR LOCAL WORKSHOP</p>
         <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
@@ -159,11 +170,11 @@ function PublicPage() {
       </section>
       <section className="booking-card" aria-labelledby="booking-heading">
         <div className="booking-card-header"><span className="small-icon"><CalendarDays size={21} /></span><span className="pill">LET'S GET YOU BOOKED IN</span></div>
-        <h2 id="booking-heading">Your next visit starts here.</h2><p className="muted">A few details, and we'll take it from there.</p>
+        <h2 id="booking-heading">Book your car service here.</h2><p className="muted">A few details, and we'll take it from there.</p>
         <BookingForm />
       </section>
-    </main>
-    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><span>Local care. Ready for the road.</span></footer>
+    </main>}
+    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><a href="/help">Contact, directions & FAQs</a></footer>
   </div>;
 }
 
@@ -200,21 +211,28 @@ function Modal({ title, onClose, children }) {
 }
 
 function jobDraft(job) {
-  return { booking_date: job.booking_date, status: job.status, diagnosis_notes: job.diagnosis_notes || '', parts_ordered: job.parts_ordered || '', amount_due: String(job.amount_due ?? 0), payment_status: job.payment_status || 'Unpaid' };
+  const vehicle = job.vehicle;
+  const customer = vehicle?.customer;
+  return { booking_date: job.booking_date, status: job.status, service_type: job.service_type || '', diagnosis_notes: job.diagnosis_notes || '', parts_ordered: job.parts_ordered || '', amount_due: String(job.amount_due ?? 0), payment_status: job.payment_status || 'Unpaid', first_name: customer?.first_name || '', last_name: customer?.last_name || '', phone: customer?.phone || '', reg_no: vehicle?.reg_no || '', make: vehicle?.make || '', model: vehicle?.model || '', year: String(vehicle?.year || ''), engine_capacity: vehicle?.engine_capacity || '' };
 }
 
-function JobEditor({ job, onClose, onSaved }) {
+function JobEditor({ job, onClose, onSaved, onDeleted }) {
   const [draft, setDraft] = useState(() => jobDraft(job));
   const [saved, setSaved] = useState(() => JSON.stringify(jobDraft(job)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const savingRef = useRef(false);
   const dirty = JSON.stringify(draft) !== saved;
   const customer = job.vehicle?.customer;
   const vehicle = job.vehicle;
   const change = (key, value) => { setError(''); setDraft((current) => ({ ...current, [key]: value })); };
   const save = useCallback(async () => {
-    if (savingRef.current) return false;
+    if (savingRef.current || deletingRef.current) return false;
+    const validation = validateBooking(draft, { allowPast: true });
+    if (validation) { setError(validation); return false; }
+    if (draft.service_type && !SERVICES.includes(draft.service_type)) { setError('Choose a supported service.'); return false; }
     if (!draft.booking_date || !JOB_STATUSES.includes(draft.status) || !PAYMENT_STATUSES.includes(draft.payment_status)) {
       setError('Please choose a date, job status, and payment status.'); return false;
     }
@@ -225,22 +243,21 @@ function JobEditor({ job, onClose, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const { data, error: dbError } = await supabase.from('jobs').update({ ...draft, amount_due: Number(draft.amount_due) }).eq('id', job.id).select('id').single();
+      const { error: dbError } = await supabase.rpc('amend_booking', { p_job_id: job.id, p_details: { ...draft, reg_no: normalizeRegistration(draft.reg_no), amount_due: Number(draft.amount_due), year: draft.year ? Number(draft.year) : null } });
       if (dbError) throw dbError;
-      if (!data) throw new Error('The job was not updated. Check your workshop permissions.');
       setSaved(JSON.stringify(draft));
-      onSaved({ ...job, ...draft, amount_due: Number(draft.amount_due) });
+      onSaved();
       return true;
     } catch (err) { setError(`Changes could not be saved: ${err.message}`); return false; }
     finally { savingRef.current = false; setSaving(false); }
   }, [draft, job, onSaved]);
   useEffect(() => {
-    if (!dirty || saving || error) return;
+    if (!dirty || saving || deleting || error) return;
     const timer = setTimeout(() => { void save(); }, 1000);
     return () => clearTimeout(timer);
-  }, [dirty, saving, error, save]);
+  }, [dirty, saving, deleting, error, save]);
   const close = () => {
-    if (savingRef.current) { setError('Please wait for your changes to finish saving.'); return; }
+    if (savingRef.current || deletingRef.current) { setError('Please wait for the current operation to finish.'); return; }
     if (dirty && !window.confirm('Your changes have not been saved. Close and discard them?')) return;
     onClose();
   };
@@ -251,24 +268,56 @@ function JobEditor({ job, onClose, onSaved }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
+  async function deleteBooking() {
+    if (savingRef.current || deletingRef.current) return;
+    const persisted = JSON.parse(saved);
+    if (!window.confirm(`Permanently delete booking ${persisted.reg_no} on ${dateLabel(persisted.booking_date)}? This removes the booking, notes and payment record and cannot be undone. Other bookings are kept.`)) return;
+    deletingRef.current = true;
+    setDeleting(true);
+    setError('');
+    try {
+      const { error: dbError } = await supabase.from('jobs').delete().eq('id', job.id).select('id').single();
+      if (dbError) throw dbError;
+      onDeleted(job.id);
+      onClose();
+    } catch (err) { setError(`Booking could not be deleted: ${err.message}`); }
+    finally { deletingRef.current = false; setDeleting(false); }
+  }
+
   return <Modal title="Job record" onClose={close}>
     <div className="job-summary"><strong className="registration">{vehicle?.reg_no || 'No registration'}</strong><div><h3>{vehicle?.make} {vehicle?.model}</h3><p>{customer?.first_name} {customer?.last_name}{vehicle?.year ? ` / ${vehicle.year}` : ''}{vehicle?.engine_capacity ? ` / ${vehicle.engine_capacity}` : ''}</p></div></div>
     {customer?.phone && <a className="phone-link" href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`}>{customer.phone} <ArrowRight size={15} /></a>}
     <form onSubmit={async (e) => { e.preventDefault(); if (await save()) onClose(); }}>
-      <fieldset disabled={saving}>
+      <fieldset disabled={saving || deleting}>
+        <p className="muted editor-warning">Customer details are shared with their other bookings. Vehicle corrections apply to all bookings for this vehicle.</p>
+        <div className="two-columns"><Field label="First name"><input required maxLength={80} value={draft.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field><Field label="Last name"><input required maxLength={80} value={draft.last_name} onChange={(e) => change('last_name', e.target.value)} /></Field></div>
+        <Field label="Phone number"><input required type="tel" maxLength={25} value={draft.phone} onChange={(e) => change('phone', e.target.value)} /></Field>
+        <Field label="Vehicle registration"><input required maxLength={10} value={draft.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /></Field>
+        <div className="two-columns"><Field label="Make"><input required maxLength={100} value={draft.make} onChange={(e) => change('make', e.target.value)} /></Field><Field label="Model"><input required maxLength={100} value={draft.model} onChange={(e) => change('model', e.target.value)} /></Field></div>
+        <div className="two-columns"><Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={draft.year} onChange={(e) => change('year', e.target.value)} /></Field><Field label="Engine capacity (optional)"><input maxLength={50} value={draft.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field></div>
+        <Field label="Tell us what you need"><select value={draft.service_type} onChange={(e) => change('service_type', e.target.value)}><option value="">Not specified (existing booking)</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}</select></Field>
         <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job in the agenda."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && draft.status !== 'Pending Confirmation' && draft.status !== 'Completed') change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
         <Field label="Diagnosis & service notes"><textarea rows={5} maxLength={10000} placeholder="What's happening with this vehicle?" value={draft.diagnosis_notes} onChange={(e) => change('diagnosis_notes', e.target.value)} /></Field>
         <Field label="Parts ordered"><textarea rows={3} maxLength={10000} placeholder="Parts, part numbers, supplier details..." value={draft.parts_ordered} onChange={(e) => change('parts_ordered', e.target.value)} /></Field>
         <div className="two-columns"><Field label="Amount due (£)"><input type="number" min="0" max="99999999.99" step="0.01" required value={draft.amount_due} onChange={(e) => change('amount_due', e.target.value)} /></Field><Field label="Payment status"><select value={draft.payment_status} onChange={(e) => change('payment_status', e.target.value)}>{PAYMENT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
       </fieldset>
-      <Notice>{error}</Notice><div className="editor-footer"><span className="save-state" role="status">{saving ? <><Spinner /> Saving...</> : dirty ? 'Unsaved changes' : <><Check size={16} /> All changes saved</>}</span><button className="button button-primary" disabled={saving}>{saving ? 'Saving...' : 'Save & close'}</button></div>
+      <Notice>{error}</Notice><div className="editor-footer"><span className="save-state" role="status">{saving ? <><Spinner /> Saving...</> : dirty ? 'Unsaved changes' : <><Check size={16} /> All changes saved</>}</span><button className="button button-primary" disabled={saving || deleting}>{saving ? 'Saving...' : 'Save & close'}</button></div>
       <p className="muted small-text">Changes save automatically after you stop typing. Moving a pending request does not approve it.</p>
     </form>
+    <div className="delete-booking"><p className="muted">Remove a test or incorrect booking permanently. The customer, vehicle and other bookings are retained.</p><button type="button" className="button button-danger" disabled={saving || deleting} onClick={deleteBooking}>{deleting ? <Spinner /> : <X size={16} />}{deleting ? 'Deleting...' : 'Delete booking'}</button></div>
   </Modal>;
 }
 
 function Status({ value }) {
   return <span className={`status status-${value.toLowerCase().replaceAll(' ', '-')}`}><span />{value}</span>;
+}
+
+function JobRow({ job, view, onOpen }) {
+  return <button className="job-row" onClick={onOpen} aria-label={`Open job ${job.vehicle?.reg_no}`}>
+    <div className="vehicle-cell"><span className="car-cell-icon"><CarFront size={21} /></span><div><strong className="reg-text">{job.vehicle?.reg_no}</strong><span>{job.vehicle?.make} {job.vehicle?.model}</span><small>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</small>{job.service_type && <small>{job.service_type}</small>}</div></div>
+    <div className="job-status-cell">{view !== 'agenda' && <small>{dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>}<Status value={job.status} /></div>
+    <div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong><ChevronRight size={18} className="row-arrow" />
+  </button>;
 }
 
 function Dashboard({ session }) {
@@ -284,6 +333,7 @@ function Dashboard({ session }) {
   const [authorized, setAuthorized] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [view, setView] = useState('agenda');
+  const [calendarView, setCalendarView] = useState('week');
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -334,9 +384,9 @@ function Dashboard({ session }) {
     if (view === 'agenda' && job.booking_date !== date) return false;
     if (view === 'payments' && (job.payment_status === 'Paid' || Number(job.amount_due) <= 0)) return false;
     if (view === 'history' && job.status !== 'Completed') return false;
-    return `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name}`.toLowerCase().includes(search.toLowerCase().trim());
+    return `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(search.toLowerCase().trim());
   });
-  const savedJob = useCallback((updated) => setJobs((current) => current.map((job) => job.id === updated.id ? updated : job)), []);
+  const savedJob = useCallback(() => { void load(); }, [load]);
   const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : 'Completed jobs';
 
   return <div className="admin-layout">
@@ -348,18 +398,20 @@ function Dashboard({ session }) {
         <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">Your bookings, your jobs, everything in one place.</p></div><button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button></div>
         <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
         <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>
-        {pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Reschedule / contact</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
-        <section className="agenda-panel">
+        {pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
+        <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
+          {view === 'agenda' && <div className="calendar-view-toggle" role="group" aria-label="Calendar view"><button className="button button-small button-outline" aria-pressed={calendarView === 'week'} onClick={() => { setCalendarView('week'); setWeek(date); }}>Week</button><button className="button button-small button-outline" aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Whole month</button>{calendarView === 'month' && <button className="button button-small button-outline" onClick={() => setDate(localDate())}>Today</button>}</div>}
+          {view === 'agenda' && calendarView === 'month' && <MonthCalendar date={date} jobs={jobs} onSelect={(day) => { setDate(day); setWeek(day); }} />}
           <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
           {view === 'agenda' && <><div className="calendar-controls"><button className="button button-outline button-small" onClick={() => { setDate(localDate()); setWeek(localDate()); }}>Today</button><label className="date-jump"><CalendarDays size={16} /><input type="date" aria-label="Go to agenda date" value={date} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setWeek(e.target.value); } }} /></label><div className="week-controls"><button className="icon-button" aria-label="Previous seven days" onClick={() => { setWeek(addDays(week, -7)); setDate(addDays(week, -7)); }}><ChevronLeft size={20} /></button><button className="icon-button" aria-label="Next seven days" onClick={() => { setWeek(addDays(week, 7)); setDate(addDays(week, 7)); }}><ChevronRight size={20} /></button></div></div><div className="date-tabs">{Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => { const count = active.filter((job) => job.booking_date === day).length; return <button key={day} aria-pressed={date === day} className={date === day ? 'date-active' : ''} onClick={() => setDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric' })}</strong><span>{count ? `${count} ${count === 1 ? 'job' : 'jobs'}` : 'No active jobs'}</span></button>; })}</div></>}
           <div className="job-table"><div className="job-table-head"><span>VEHICLE / CUSTOMER</span><span>{view === 'agenda' ? 'JOB STATUS' : 'DATE / STATUS'}</span><span>PAYMENT</span><span>AMOUNT</span><span /></div>
-            {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <button className="job-row" key={job.id} onClick={() => setEditing(job)} aria-label={`Open job ${job.vehicle?.reg_no}`}><div className="vehicle-cell"><span className="car-cell-icon"><CarFront size={21} /></span><div><strong className="reg-text">{job.vehicle?.reg_no}</strong><span>{job.vehicle?.make} {job.vehicle?.model}</span><small>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</small></div></div><div className="job-status-cell">{view !== 'agenda' && <small>{dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>}<Status value={job.status} /></div><div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong><ChevronRight size={18} className="row-arrow" /></button>)}
+            {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} onOpen={() => setEditing(job)} />)}
           </div><div className="agenda-footer"><span>{filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}{view === 'agenda' ? ' on this day' : ' in this view'}</span><span><span className="dot" /> Refreshes every 30 seconds</span></div>
         </section>
         <footer className="dashboard-footer">Andy's Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
       </main>
     </div>
-    {editing && <JobEditor key={editing.id} job={editing} onClose={() => setEditing(null)} onSaved={savedJob} />}
+    {editing && <JobEditor key={editing.id} job={editing} onClose={() => setEditing(null)} onSaved={savedJob} onDeleted={(id) => { ++requestRef.current; setJobs((current) => current.filter((job) => job.id !== id)); void load(); }} />}
     {creating && <Modal title="Add a workshop booking" onClose={() => { if (window.confirm('Close the booking form? Any unsent details will be lost.')) setCreating(false); }}><BookingForm admin onCreated={() => { setCreating(false); void load(); }} /></Modal>}
   </div>;
 }
