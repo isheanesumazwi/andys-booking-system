@@ -195,3 +195,29 @@ test('DVSA expired tokens are renewed and failed authentication is not cached', 
   assert.equal((await vehicleLookup('GET', 'AB12CDE', dvsa, fetcher)).status, 200);
   assert.equal(tokens, 3);
 });
+
+test('DVSA diagnostics distinguish failure stages without logging credentials or raw errors', async (t) => {
+  const logger = t.mock.method(console, 'error', () => {});
+  const failure = () => { throw new Error(`sensitive ${dvsa.DVSA_CLIENT_SECRET} ${dvsa.DVSA_API_KEY}`); };
+  const cases = [
+    [{ DVSA_TOKEN_URL: 'invalid' }, failure, 'DVSA_TOKEN_URL_INVALID', null],
+    [{ DVSA_SCOPE_URL: 'invalid' }, failure, 'DVSA_SCOPE_INVALID', null],
+    [{}, failure, 'DVSA_AUTH_CONNECTION_FAILED', null],
+    [{}, async () => ({ ok: false, status: 401 }), 'DVSA_AUTH_REJECTED', 401],
+    [{}, async () => ({ ok: true, json: async () => null }), 'DVSA_AUTH_RESPONSE_INVALID', null],
+    [{}, async (url) => url.hostname === 'login.microsoftonline.com' ? tokenResponse() : failure(), 'DVSA_LOOKUP_CONNECTION_FAILED', null],
+    [{}, async (url) => url.hostname === 'login.microsoftonline.com' ? tokenResponse() : { ok: false, status: 403 }, 'DVSA_LOOKUP_REJECTED', 403],
+    [{}, async (url) => url.hostname === 'login.microsoftonline.com' ? tokenResponse() : { ok: true, json: async () => ({}) }, 'DVSA_VEHICLE_RESPONSE_INVALID', null],
+  ];
+  for (const [patch, fetcher, code, upstreamStatus] of cases) {
+    const result = await vehicleLookup('GET', 'AB12CDE', { ...dvsa, ...patch }, fetcher);
+    assert.equal(result.status, 502);
+    assert.equal(result.body.code, code);
+    assert.match(result.body.error, new RegExp(code));
+    assert.deepEqual(logger.mock.calls.at(-1).arguments, ['DVSA vehicle lookup failed:', { code, upstreamStatus }]);
+  }
+  const diagnostics = JSON.stringify(logger.mock.calls.map((call) => call.arguments));
+  for (const secret of [dvsa.DVSA_CLIENT_SECRET, dvsa.DVSA_API_KEY, 'test-token', 'sensitive']) {
+    assert.equal(diagnostics.includes(secret), false);
+  }
+});
