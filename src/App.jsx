@@ -7,7 +7,6 @@ import MonthCalendar from './MonthCalendar.jsx';
 
 const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', service_type: '' };
 
-
 function Notice({ children, success = false }) {
   return children ? <div className={`notice ${success ? 'notice-success' : ''}`} role={success ? 'status' : 'alert'}>{children}</div> : null;
 }
@@ -270,7 +269,7 @@ function JobEditor({ job, onClose, onSaved, onDeleted }) {
     setDeleting(true);
     setError('');
     try {
-      const { error: dbError } = await supabase.from('jobs').delete().eq('id', job.id).select('id').single();
+      const { error: dbError } = await supabase.rpc('delete_booking', { p_job_id: job.id });
       if (dbError) throw dbError;
       onDeleted(job.id);
       onClose();
@@ -312,6 +311,62 @@ function JobRow({ job, view, onOpen }) {
     <div className="job-status-cell">{view !== 'agenda' && <small>{dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>}<Status value={job.status} /></div>
     <div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong><ChevronRight size={18} className="row-arrow" />
   </button>;
+}
+
+function PlateLookup({ enabled }) {
+  const [registration, setRegistration] = useState('');
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const normalizedRegistration = normalizeRegistration(registration);
+
+  async function lookup(event) {
+    event.preventDefault();
+    if (!validRegistration(normalizedRegistration)) {
+      setError('Enter a valid registration with 2–8 letters or numbers.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const response = await fetch(`/api/vehicle?registration=${encodeURIComponent(normalizedRegistration)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Vehicle lookup is unavailable.');
+      setResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const facts = result && [
+    ['Make', result.make],
+    ['Model', result.model],
+    ['Year', result.year],
+    ['Engine capacity', result.engine_capacity ? `${result.engine_capacity} cc` : null],
+    ['Fuel', result.fuel_type],
+    ['Colour', result.colour],
+    ['MOT status', result.mot_status],
+    ['MOT expiry', result.mot_expiry_date],
+    ['Tax status', result.tax_lookup_error ? 'Unavailable' : result.tax_status],
+    ['Tax due', result.tax_lookup_error ? 'Unavailable' : result.tax_due_date],
+  ];
+
+  return <section className="plate-lookup-panel">
+    <div className="plate-lookup-heading"><span className="stat-icon"><CarFront size={21} /></span><div><h2>Run a plate</h2><p className="muted">Check the vehicle details and latest MOT information for workshop use.</p></div></div>
+    <form className="plate-lookup-form" onSubmit={lookup}>
+      <Field label="Vehicle registration"><input required maxLength={10} autoCapitalize="characters" spellCheck={false} placeholder="AB12 CDE" value={registration} onChange={(event) => { setRegistration(event.target.value.toUpperCase()); setResult(null); setError(''); }} /></Field>
+      <button className="button button-primary" type="submit" disabled={!enabled || busy}>{busy ? <Spinner /> : <Search size={17} />}{busy ? 'Checking plate...' : 'Check plate'}</button>
+    </form>
+    <Notice>{error}</Notice>
+    {result && <div className="plate-result" aria-live="polite">
+      <div className="plate-result-title"><strong className="registration">{normalizedRegistration}</strong><span>{result.tax_lookup_error ? 'Tax details could not be checked.' : result.tax_lookup_configured ? 'DVLA vehicle and tax details' : 'DVSA MOT history'}</span></div>
+      <dl className="vehicle-details-grid">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || 'Not available'}</dd></div>)}</dl>
+      {!result.tax_lookup_configured && <p className="muted plate-lookup-note">Tax details require a separate DVLA Vehicle Enquiry Service API key. The DVSA MOT History API key does not provide tax status.</p>}
+    </div>}
+  </section>;
 }
 
 function Dashboard({ session }) {
@@ -381,19 +436,19 @@ function Dashboard({ session }) {
     return `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(search.toLowerCase().trim());
   });
   const savedJob = useCallback(() => { void load(); }, [load]);
-  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : 'Completed jobs';
+  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : 'Run a plate';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }, { key: 'lookup', icon: CarFront, label: 'Run a plate' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
       <main className="dashboard-content">
-        <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">Your bookings, your jobs, everything in one place.</p></div><button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button></div>
+        <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">{view === 'lookup' ? 'Quick vehicle checks for the workshop.' : 'Your bookings, your jobs, everything in one place.'}</p></div><button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button></div>
         <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
-        <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>
-        {pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
-        <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
+        {view !== 'lookup' && <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>}
+        {view !== 'lookup' && pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
+        {view === 'lookup' ? <PlateLookup enabled={authorized} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
           {view === 'agenda' && <div className="calendar-view-toggle" role="group" aria-label="Calendar view"><button className="button button-small button-outline" aria-pressed={calendarView === 'week'} onClick={() => { setCalendarView('week'); setWeek(date); }}>Week</button><button className="button button-small button-outline" aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Whole month</button>{calendarView === 'month' && <button className="button button-small button-outline" onClick={() => setDate(localDate())}>Today</button>}</div>}
           {view === 'agenda' && calendarView === 'month' && <MonthCalendar date={date} jobs={jobs} onSelect={(day) => { setDate(day); setWeek(day); }} />}
           <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
@@ -401,7 +456,7 @@ function Dashboard({ session }) {
           <div className="job-table"><div className="job-table-head"><span>VEHICLE / CUSTOMER</span><span>{view === 'agenda' ? 'JOB STATUS' : 'DATE / STATUS'}</span><span>PAYMENT</span><span>AMOUNT</span><span /></div>
             {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} onOpen={() => setEditing(job)} />)}
           </div><div className="agenda-footer"><span>{filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}{view === 'agenda' ? ' on this day' : ' in this view'}</span><span><span className="dot" /> Refreshes every 30 seconds</span></div>
-        </section>
+        </section>}
         <footer className="dashboard-footer">Andy's Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
       </main>
     </div>

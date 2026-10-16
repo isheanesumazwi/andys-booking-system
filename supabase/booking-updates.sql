@@ -13,6 +13,21 @@ drop policy if exists owner_delete_jobs on public.jobs;
 create policy owner_delete_jobs on public.jobs for delete to authenticated
   using (public.is_workshop_admin());
 
+create or replace function public.delete_booking(p_job_id bigint)
+returns void
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  if not public.is_workshop_admin() then
+    raise exception 'Only the workshop owner can delete bookings.';
+  end if;
+  delete from public.jobs where id = p_job_id;
+  if not found then raise exception 'This booking no longer exists.'; end if;
+end;
+$$;
+revoke all on function public.delete_booking(bigint) from public, anon;
+grant execute on function public.delete_booking(bigint) to authenticated;
+
 -- Retain the original ten-argument intake API for older deployed clients.
 -- Its advisory transaction locks also protect this service-aware overload.
 create or replace function public.request_booking(

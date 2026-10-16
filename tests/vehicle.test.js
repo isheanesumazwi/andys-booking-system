@@ -4,8 +4,19 @@ import { parseVehicle, vehicleLookup } from '../server/vehicle.js';
 
 const env = { RAPIDAPI_KEY: 'test-key', RAPIDAPI_HOST: 'uk-vehicle-data1.p.rapidapi.com', VEHICLE_API_URL: 'https://uk-vehicle-data1.p.rapidapi.com/lookup?registration={registration}' };
 test('parses common provider response shapes without leaking provider payload', () => {
-  assert.deepEqual(parseVehicle({ data: { make: 'Ford', model: 'Focus', yearOfManufacture: '2018', engineCapacity: 1598, secret: 'ignored' } }), { make: 'Ford', model: 'Focus', year: 2018, engine_capacity: '1598' });
+  assert.deepEqual(parseVehicle({ data: { make: 'Ford', model: 'Focus', yearOfManufacture: '2018', engineCapacity: 1598, secret: 'ignored' } }), {
+    make: 'Ford', model: 'Focus', year: 2018, engine_capacity: '1598', fuel_type: null, colour: null,
+    mot_status: null, mot_expiry_date: null, tax_status: null, tax_due_date: null, tax_lookup_configured: false, tax_lookup_error: false,
+  });
   assert.equal(parseVehicle({ CarMake: { CurrentTextValue: 'Volkswagen' }, CarModel: { CurrentTextValue: 'Golf' } }).model, 'Golf');
+  const vehicle = parseVehicle({ registration: 'AB12CDE', make: 'FORD', model: 'FOCUS', fuelType: 'PETROL', primaryColour: 'BLUE', motTests: [
+    { completedDate: '2022.01.01', testResult: 'PASSED', expiryDate: '2023.01.01' },
+    { completedDate: '2024.02.01', testResult: 'PASSED', expiryDate: '2025.02.01' },
+  ] });
+  assert.equal(vehicle.mot_status, 'PASSED');
+  assert.equal(vehicle.mot_expiry_date, '2025.02.01');
+  assert.equal(vehicle.fuel_type, 'PETROL');
+  assert.equal(vehicle.colour, 'BLUE');
   assert.throws(() => parseVehicle({ error: 'not found' }));
 });
 test('rejects unsupported methods and invalid registration without provider calls', async () => {
@@ -48,6 +59,48 @@ test('never sends credentials to a mismatched host', async () => {
   assert.equal(called, false);
 });
 
+test('adds DVLA tax and vehicle details using the separate server-only VES key', async () => {
+  const result = await vehicleLookup('GET', 'ab12 cde', {
+    ...env,
+    DVLA_VES_API_KEY: 'test-ves-key',
+  }, async (url, options) => {
+    if (String(url).startsWith('https://uk-vehicle-data1.p.rapidapi.com/')) {
+      return { ok: true, json: async () => ({ make: 'Ford', model: 'Focus', year: 2018 }) };
+    }
+    assert.equal(String(url), 'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.headers['x-api-key'], 'test-ves-key');
+    assert.deepEqual(JSON.parse(options.body), { registrationNumber: 'AB12CDE' });
+    assert.equal(options.redirect, 'error');
+    return { ok: true, json: async () => ({
+      make: 'FORD', yearOfManufacture: 2018, engineCapacity: 1598, fuelType: 'PETROL', colour: 'BLUE',
+      taxStatus: 'Taxed', taxDueDate: '2027-05-01', motStatus: 'Valid',
+    }) };
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, {
+    make: 'FORD', model: 'Focus', year: 2018, engine_capacity: '1598', fuel_type: 'PETROL', colour: 'BLUE',
+    mot_status: 'Valid', mot_expiry_date: null, tax_status: 'Taxed', tax_due_date: '2027-05-01',
+    tax_lookup_configured: true, tax_lookup_error: false,
+  });
+});
+
+test('keeps available MOT data when the optional DVLA enquiry is unavailable', async () => {
+  const result = await vehicleLookup('GET', 'AB12CDE', {
+    ...env,
+    DVLA_VES_API_KEY: 'test-ves-key',
+  }, async (url) => {
+    if (String(url).startsWith('https://uk-vehicle-data1.p.rapidapi.com/')) {
+      return { ok: true, json: async () => ({ make: 'Ford', model: 'Focus' }) };
+    }
+    return { ok: false, status: 429 };
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.make, 'Ford');
+  assert.equal(result.body.tax_lookup_configured, true);
+  assert.equal(result.body.tax_lookup_error, true);
+});
+
 const dvsa = {
   VEHICLE_API_PROVIDER: 'dvsa',
   DVSA_CLIENT_ID: 'test-client',
@@ -85,7 +138,10 @@ test('DVSA uses client credentials, official endpoint, and server-only headers w
   const results = await Promise.all([vehicleLookup('GET', 'ab12 cde', dvsa, fetcher), vehicleLookup('GET', 'AB12CDE', dvsa, fetcher)]);
   assert.equal(tokens, 1);
   assert.equal(lookups, 2);
-  for (const result of results) assert.deepEqual(result, { status: 200, body: { make: 'FORD', model: 'FOCUS', year: 2018, engine_capacity: '1598' } });
+  for (const result of results) assert.deepEqual(result, { status: 200, body: {
+    make: 'FORD', model: 'FOCUS', year: 2018, engine_capacity: '1598', fuel_type: null, colour: null,
+    mot_status: null, mot_expiry_date: null, tax_status: null, tax_due_date: null, tax_lookup_configured: false, tax_lookup_error: false,
+  } });
   await vehicleLookup('GET', 'AB12CDE', dvsa, fetcher);
   assert.equal(tokens, 1);
 });

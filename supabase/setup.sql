@@ -1,6 +1,6 @@
 -- Run in Supabase SQL Editor. Existing customer, vehicle and job rows are retained.
 -- This replaces access policies on these three application tables.
--- Then run booking-updates.sql to enable services, full amendments and deletion.
+-- Then run booking-updates.sql to enable requested services and the owner amendment RPC.
 begin;
 
 create table if not exists public.customers (
@@ -84,6 +84,7 @@ revoke all on public.customers, public.vehicles, public.jobs, public.app_admins 
 grant select on public.customers, public.vehicles, public.jobs to authenticated;
 grant update (booking_date, status, diagnosis_notes, parts_ordered, amount_due, payment_status)
   on public.jobs to authenticated;
+grant delete on public.jobs to authenticated;
 
 create policy owner_read_customers on public.customers for select to authenticated
   using (public.is_workshop_admin());
@@ -93,6 +94,23 @@ create policy owner_read_jobs on public.jobs for select to authenticated
   using (public.is_workshop_admin());
 create policy owner_update_jobs on public.jobs for update to authenticated
   using (public.is_workshop_admin()) with check (public.is_workshop_admin());
+create policy owner_delete_jobs on public.jobs for delete to authenticated
+  using (public.is_workshop_admin());
+
+create or replace function public.delete_booking(p_job_id bigint)
+returns void
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  if not public.is_workshop_admin() then
+    raise exception 'Only the workshop owner can delete bookings.';
+  end if;
+  delete from public.jobs where id = p_job_id;
+  if not found then raise exception 'This booking no longer exists.'; end if;
+end;
+$$;
+revoke all on function public.delete_booking(bigint) from public, anon;
+grant execute on function public.delete_booking(bigint) to authenticated;
 
 create or replace function public.touch_job_updated_at()
 returns trigger language plpgsql set search_path = ''

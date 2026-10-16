@@ -13,11 +13,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid #afbd77; outline-offs
 h1, h2, h3, p { margin: 0; }
 fieldset { margin: 0; border: 0; padding: 0; min-width: 0; }
 .shell { max-width: 1220px; margin: auto; padding-left: 46px; padding-right: 46px; }
-
-
-
-
-
 .public-page { background: #f5f5ed; min-height: 100vh; }
 .public-header { min-height: 108px; display: flex; align-items: center; justify-content: space-between; }
 .staff-link { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #636e64; padding: 10px 0; }
@@ -91,11 +86,6 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 .app-loading { display: flex; min-height: 100vh; justify-content: center; align-items: center; gap: 10px; font-size: 13px; }
 .admin-layout { min-height: 100vh; display: flex; background: #f5f6f1; }
 .sidebar { width: 240px; position: fixed; inset: 0 auto 0 0; background: #18392e; color: #f7f8ef; padding: 32px 22px 20px; z-index: 20; display: flex; flex-direction: column; }
-
-
-
-
-
 .sidebar-label { font-size: 8px; color: #8ca18a; letter-spacing: 1.6px; margin: 0 11px 18px; }
 .sidebar nav { display: flex; flex-direction: column; gap: 7px; }
 .sidebar nav button, .sidebar nav a { display: flex; align-items: center; gap: 11px; background: transparent; border: 0; text-align: left; border-radius: 7px; padding: 13px 11px; color: #b7c8b3; font-size: 11px; }
@@ -145,6 +135,21 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 .agenda-heading p { font-size: 10px; }
 .search-input { display: flex; align-items: center; gap: 8px; color: #98a18d; border: 1px solid #e3e8dc; border-radius: 7px; padding-left: 10px; min-width: 230px; }
 .search-input input { background: transparent; border: none; min-height: 36px; padding: 9px 9px 9px 0; font-size: 10px; }
+.plate-lookup-panel { max-width: 850px; padding: 24px; background: #fff; border: 1px solid #e1e6d9; border-radius: 12px; }
+.plate-lookup-heading { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; }
+.plate-lookup-heading h2 { font-size: 16px; font-weight: 650; margin-bottom: 5px; }
+.plate-lookup-heading p { font-size: 10px; }
+.plate-lookup-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+.plate-lookup-form .field { margin-bottom: 0; }
+.plate-lookup-form > .button { min-height: 41px; margin-bottom: 0; }
+.plate-result { margin-top: 22px; padding-top: 20px; border-top: 1px solid #edf0e8; }
+.plate-result-title { display: flex; align-items: center; gap: 13px; margin-bottom: 14px; }
+.plate-result-title > span { color: #7d8972; font-size: 10px; }
+.vehicle-details-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.vehicle-details-grid > div { padding: 12px; background: #f7f9f3; border-radius: 7px; }
+.vehicle-details-grid dt { color: #87917f; font-size: 9px; margin-bottom: 5px; }
+.vehicle-details-grid dd { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.plate-lookup-note { margin-top: 15px; font-size: 10px; line-height: 1.6; }
 .calendar-controls { display: flex; gap: 10px; align-items: center; padding: 0 24px 14px; }
 .date-jump { display: flex; align-items: center; gap: 8px; color: #86957a; }
 .date-jump input { font-size: 10px; min-height: 34px; padding: 7px 8px; width: 138px; background: #fff; }
@@ -290,9 +295,6 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 @media (max-width: 640px) {
   .shell { padding-left: 20px; padding-right: 20px; }
   .public-header { min-height: 85px; }
-
-
-
   .staff-link { font-size: 0; gap: 5px; }
   .staff-link > svg { width: 18px; }
   .public-main { grid-template-columns: 1fr; padding-top: 10px; gap: 30px; padding-bottom: 35px; }
@@ -329,6 +331,12 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
   .agenda-heading { padding: 20px 16px 16px; flex-direction: column; align-items: stretch; gap: 14px; }
   .search-input { min-width: 0; }
   .search-input input { font-size: 12px; }
+  .plate-lookup-panel { padding: 18px 15px; }
+  .plate-lookup-form { grid-template-columns: 1fr; }
+  .plate-lookup-form > .button { width: 100%; }
+  .vehicle-details-grid { gap: 7px; }
+  .vehicle-details-grid > div { padding: 10px; }
+  .plate-result-title { align-items: flex-start; flex-direction: column; gap: 7px; }
   .calendar-controls { padding: 0 16px 13px; gap: 7px; }
   .date-tabs { display: flex; overflow-x: auto; padding: 0 16px 18px; gap: 7px; scrollbar-width: thin; }
   .date-tabs > button { min-width: 65px; flex: 1 0 65px; padding: 10px 4px; }
