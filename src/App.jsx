@@ -46,7 +46,7 @@ function BookingForm({ admin = false, onCreated }) {
         if (!response.ok) throw new Error(data.error || 'Vehicle lookup is unavailable. Please enter your vehicle details manually.');
         if (controller.signal.aborted) return;
         setForm((current) => ({ ...current, make: data.make, model: data.model, year: data.year || '', engine_capacity: data.engine_capacity || '' }));
-        setLookup({ state: 'found', message: `We found your ${data.make} ${data.model}.` });
+        setLookup({ state: 'found', message: `We found your ${data.make} ${data.model} ${data.year}.` });
       } catch (err) {
         if (controller.signal.aborted) return;
         setLookup({ state: 'failed', message: err.message });
