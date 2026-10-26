@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ArrowRight, MapPin, Phone, Mail } from 'lucide-react';
-import { SERVICES } from './utils.js';
+import { SERVICES, WORKSHOP } from './utils.js';
 
-const address = '1A Warwick Rd, Newport NP19 8JJ, United Kingdom';
+const address = WORKSHOP.address;
 const questions = [
   ['How do I book?', 'Choose the work you need, enter your contact and vehicle details, and request a preferred date. Andy will contact you to confirm your appointment.'],
   ['Is my booking confirmed straight away?', 'No. Online bookings are requests until the workshop confirms them. Please wait for confirmation before bringing your car in.'],
