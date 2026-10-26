@@ -42,14 +42,14 @@ test('manual labour cost overrides hours x rate, which fills it in when both are
   assert.deepEqual(withLabourCost({ hours: '1.5', rate: '50', cost: '60' }, 'cost'), { hours: '1.5', rate: '50', cost: '60' });
 });
 
-test('job progress follows checked, priced, authorised, work done, QC and paid', () => {
+test('job progress follows checked, priced, work done, QC and paid', () => {
   assert.deepEqual(jobProgress({ job_card: {}, payment_status: 'Unpaid' }).completed, 0);
   assert.equal(jobProgress({ job_card: {}, payment_status: 'Unpaid' }).next, 'Start the inspection');
   assert.equal(jobProgress({ job_card: { checks: { 1: null } }, payment_status: 'Unpaid' }).done.checked, false);
   const priced = jobProgress({ job_card: { checks: { 1: 'ok' }, labour: [{ description: 'Pads', cost: '40' }] }, payment_status: 'Unpaid' });
-  assert.equal(priced.next, 'Get customer authorisation');
-  const done = jobProgress({ job_card: { diagnosis: 'Worn pads', parts: [{ description: 'Pads', qty: '1', unit_cost: '30' }], authorised: true, work_notes: 'Fitted', qc_passed: true }, payment_status: 'Paid' });
-  assert.equal(done.completed, 6);
+  assert.equal(priced.next, 'Record the work carried out');
+  const done = jobProgress({ job_card: { diagnosis: 'Worn pads', parts: [{ description: 'Pads', qty: '1', unit_cost: '30' }], work_notes: 'Fitted', qc_passed: true }, payment_status: 'Paid' });
+  assert.equal(done.completed, 5);
   assert.equal(done.next, null);
 });
 

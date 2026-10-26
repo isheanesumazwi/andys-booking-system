@@ -146,16 +146,12 @@ export function JobCardForm({ card, onChange }) {
       <VehicleInspection damage={card.damage} onChange={(damage) => set('damage', damage)} />
       <Field label="Inspection notes"><textarea rows={2} maxLength={2000} placeholder="General condition, existing damage pointed out to the customer..." value={card.inspection_notes} onChange={(e) => set('inspection_notes', e.target.value)} /></Field>
     </Step>
-    <Step number="3" title="Estimated parts & labour" icon={Package} summary={`${money(totals.total)}${card.authorised ? ' · authorised' : ''}`}>
+    <Step number="3" title="Estimated parts & labour" icon={Package} summary={money(totals.total)}>
       <LineItems caption="Parts" lines={card.parts} cost={partCost} blank={{ description: '', part_no: '', qty: '1', unit_cost: '' }} onChange={(parts) => set('parts', parts)}
         columns={[['description', 'Part', { maxLength: 200, required: true }], ['part_no', 'Part no.', { maxLength: 60 }], ['qty', 'Qty', { type: 'number', min: '0', step: '1', inputMode: 'numeric' }], ['unit_cost', 'Unit price (£)', money2]]} />
       <LineItems caption="Labour" lines={card.labour} blank={{ description: '', hours: '', rate: '', cost: '' }} transform={withLabourCost} onChange={(labour) => set('labour', labour)}
         columns={[['description', 'Work', { maxLength: 200, required: true }], ['hours', 'Hours (optional)', { type: 'number', min: '0', step: '0.25', inputMode: 'decimal' }], ['rate', 'Rate £/hr (optional)', money2], ['cost', 'Labour cost (£)', money2]]} />
       <p className="muted small-text">Type the labour cost directly, or enter hours and a rate to work it out.</p>
-      <div className="authorisation">
-        <label className="check-label"><input type="checkbox" checked={card.authorised} onChange={(e) => set('authorised', e.target.checked)} /> Customer authorised this estimate</label>
-        <Field label="How and when it was authorised"><input maxLength={200} placeholder="e.g. Phone call, 26 Oct 10:30" value={card.authorised_note} onChange={(e) => set('authorised_note', e.target.value)} /></Field>
-      </div>
       <dl className="card-totals"><div><dt>Parts</dt><dd>{money(totals.parts)}</dd></div><div><dt>Labour</dt><dd>{money(totals.labour)}</dd></div><div><dt>Total</dt><dd>{money(totals.total)}</dd></div></dl>
     </Step>
     <Step number="4" title="Work carried out" icon={NotebookPen}>
@@ -234,7 +230,7 @@ export function JobCardsBoard({ jobs, loading, authorized, onOpen }) {
   if (filter !== 'active') listed.reverse();
   return <section className="agenda-panel job-board">
     <div className="agenda-heading">
-      <div><h2>Job cards</h2><p className="muted">Each job moves through checked, priced, authorised, work done, QC and paid. Open a card to carry on where you left off.</p></div>
+      <div><h2>Job cards</h2><p className="muted">Each job moves through checked, priced, work done, QC and paid. Open a card to carry on where you left off.</p></div>
       <div className="search-input"><Search size={17} /><input aria-label="Search job cards" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
     </div>
     <div className="calendar-view-toggle board-filters" role="group" aria-label="Show job cards">{BOARD_FILTERS.map(([key, label]) => <button key={key} type="button" className="button button-small button-outline" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}</div>

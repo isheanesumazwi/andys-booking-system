@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, Wrench, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
 import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, SERVICES, validRegistration, validateBooking } from './utils.js';
 import { cardTotals, normalizeCard } from './jobCard.js';
@@ -21,16 +21,16 @@ function Field({ label, children, hint }) {
 
 function Spinner() { return <LoaderCircle className="spin" size={18} aria-hidden="true" />; }
 
-const OTHER_SERVICE = '__other__';
 const validService = (value) => value.trim().length > 0 && value.trim().length <= 200;
 
-// Preset services plus a free-text option, so customers can describe any job.
-function ServicePicker({ value, onChange, required = false, emptyLabel = 'Please Select' }) {
-  const [other, setOther] = useState(() => value !== '' && !SERVICES.includes(value));
-  return <>
-    <Field label="Tell us what you need"><select required={required} value={other ? OTHER_SERVICE : value} onChange={(e) => { const next = e.target.value; setOther(next === OTHER_SERVICE); onChange(next === OTHER_SERVICE ? '' : next); }}><option value="">{emptyLabel}</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}<option value={OTHER_SERVICE}>Something else (describe it)</option></select></Field>
-    {other && <Field label="Describe what you need" hint="e.g. knocking noise from the front, clutch slipping, air con not cold"><input required={required} maxLength={200} autoFocus value={value} onChange={(e) => onChange(e.target.value)} /></Field>}
-  </>;
+// Customers describe the job in their own words; common jobs are quick fills.
+function ServicePicker({ value, onChange, required = false }) {
+  const pick = (service) => onChange(!value.trim() || SERVICES.includes(value) ? service : `${service} – ${value}`.slice(0, 200));
+  return <div className="service-picker">
+    <Field label="Tell us what you need"><textarea required={required} rows={3} maxLength={200} placeholder="Describe the problem or the work you'd like done, e.g. knocking noise from the front when braking" value={value} onChange={(e) => onChange(e.target.value)} /></Field>
+    <p className="service-chips-label">Or tap a common job:</p>
+    <div className="service-chips" role="group" aria-label="Common jobs">{SERVICES.map((service) => <button type="button" key={service} aria-pressed={value === service} onClick={() => pick(service)}>{service}</button>)}</div>
+  </div>;
 }
 
 function BookingForm({ admin = false, onCreated }) {
@@ -164,11 +164,7 @@ function PublicPage() {
         <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
         <p className="hero-description">A friendly face. Honest advice. A car that's ready for the road. Book your next visit with Andy's Beechwood Car Care.</p>
         <div className="hero-features"><span><CheckCircle2 size={17} /> Personal service</span><span><CheckCircle2 size={17} /> Straightforward booking</span></div>
-        <div className="workshop-art">
-          <div className="art-grid" aria-hidden="true" /><div className="art-label" aria-hidden="true"><span className="dot" /> A LITTLE CARE GOES A LONG WAY</div>
-          <PhotoCarousel />
-          <div className="art-caption"><Wrench size={16} /><span>Keeping you moving, one visit at a time.</span></div>
-        </div>
+        <PhotoCarousel />
       </section>
       <section className="booking-card" aria-labelledby="booking-heading">
         <div className="booking-card-header"><span className="small-icon"><CalendarDays size={21} /></span><span className="pill">LET'S GET YOU BOOKED IN</span></div>
@@ -344,7 +340,7 @@ function JobEditor({ job, initialTab = 'booking', onClose, onSaved, onDeleted })
         <Field label="Vehicle registration"><input required maxLength={10} value={draft.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /></Field>
         <div className="two-columns"><Field label="Make"><input required maxLength={100} value={draft.make} onChange={(e) => change('make', e.target.value)} /></Field><Field label="Model"><input required maxLength={100} value={draft.model} onChange={(e) => change('model', e.target.value)} /></Field></div>
         <div className="two-columns"><Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={draft.year} onChange={(e) => change('year', e.target.value)} /></Field><Field label="Engine capacity (optional)"><input maxLength={50} value={draft.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field></div>
-        <ServicePicker value={draft.service_type} onChange={(value) => change('service_type', value)} emptyLabel="Not specified (existing booking)" />
+        <ServicePicker value={draft.service_type} onChange={(value) => change('service_type', value)} />
         <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job in the agenda."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && draft.status !== 'Pending Confirmation' && draft.status !== 'Completed') change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
         <Field label="Diagnosis & service notes"><textarea rows={5} maxLength={10000} placeholder="What's happening with this vehicle?" value={draft.diagnosis_notes} onChange={(e) => change('diagnosis_notes', e.target.value)} /></Field>
         <Field label="Parts ordered"><textarea rows={3} maxLength={10000} placeholder="Parts, part numbers, supplier details..." value={draft.parts_ordered} onChange={(e) => change('parts_ordered', e.target.value)} /></Field>
