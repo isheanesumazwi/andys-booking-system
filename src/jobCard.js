@@ -75,7 +75,7 @@ export const emptyCard = () => ({
   brakes: wheels(['pads', 'discs']), brake_fluid_replace: false,
   emissions: { fuel: '', hc: '', co: '', co2: '', o2: '', lambda: '', km: '' },
   damage: {}, inspection_notes: '',
-  parts: [], labour: [], authorised: false, authorised_note: '',
+  parts: [], labour: [],
   work_notes: '', additional_work: '', advisory_report: '',
   qc_notes: '', qc_passed: false, technician: '', date_in: '', date_completed: '', photo_taken: false, photo_shared: false,
 });
@@ -123,7 +123,6 @@ export function checkSummary(card) {
 export const STAGES = [
   ['checked', 'Checked', 'Start the inspection'],
   ['priced', 'Priced', 'Add parts & labour'],
-  ['authorised', 'Authorised', 'Get customer authorisation'],
   ['worked', 'Work done', 'Record the work carried out'],
   ['qc', 'QC passed', 'Quality check & sign off'],
   ['paid', 'Paid', 'Take payment'],
@@ -134,7 +133,6 @@ export function jobProgress(job) {
   const done = {
     checked: Object.values(card.checks).some(Boolean) || Boolean(card.diagnosis.trim()),
     priced: cardTotals(card).total > 0,
-    authorised: card.authorised,
     worked: Boolean(card.work_notes.trim()),
     qc: card.qc_passed,
     paid: job.payment_status === 'Paid',
