@@ -75,7 +75,7 @@ export const emptyCard = () => ({
   brakes: wheels(['pads', 'discs']), brake_fluid_replace: false,
   emissions: { fuel: '', hc: '', co: '', co2: '', o2: '', lambda: '', km: '' },
   damage: {}, inspection_notes: '',
-  parts: [], labour: [],
+  parts: [], labour: [], authorised: false, authorised_note: '',
   work_notes: '', additional_work: '', advisory_report: '',
   qc_notes: '', qc_passed: false, technician: '', date_in: '', date_completed: '', photo_taken: false, photo_shared: false,
 });
@@ -92,14 +92,21 @@ export function normalizeCard(raw) {
     merged[key] = Object.fromEntries(WHEEL_POSITIONS.map(([wheel]) => [wheel, { ...base[key][wheel], ...object(object(card[key])[wheel]) }]));
   }
   merged.parts = Array.isArray(card.parts) ? card.parts.map((part) => ({ description: '', part_no: '', qty: '1', unit_cost: '', ...object(part) })) : [];
-  merged.labour = Array.isArray(card.labour) ? card.labour.map((line) => ({ description: '', hours: '', rate: '', ...object(line) })) : [];
+  merged.labour = Array.isArray(card.labour) ? card.labour.map((line) => ({ description: '', hours: '', rate: '', cost: '', ...object(line) })) : [];
   return merged;
 }
 
 const amount = (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : 0; };
 const pence = (value) => Math.round(value * 100) / 100;
 export const partCost = (part) => pence(amount(part.qty) * amount(part.unit_cost));
-export const labourCost = (line) => pence(amount(line.hours) * amount(line.rate));
+// A manually entered labour cost wins; older lines without one fall back to hours x rate.
+export const labourCost = (line) => pence(line.cost !== '' && line.cost != null ? amount(line.cost) : amount(line.hours) * amount(line.rate));
+export function withLabourCost(line, changed) {
+  if (changed !== 'hours' && changed !== 'rate') return line;
+  const hours = amount(line.hours);
+  const rate = amount(line.rate);
+  return hours && rate ? { ...line, cost: (hours * rate).toFixed(2) } : line;
+}
 
 export function cardTotals(card) {
   const parts = pence(card.parts.reduce((sum, part) => sum + partCost(part), 0));
@@ -111,4 +118,27 @@ export function checkSummary(card) {
   const counts = { ok: 0, advisory: 0, repair: 0 };
   for (const value of Object.values(card.checks)) if (value in counts) counts[value] += 1;
   return counts;
+}
+
+export const STAGES = [
+  ['checked', 'Checked', 'Start the inspection'],
+  ['priced', 'Priced', 'Add parts & labour'],
+  ['authorised', 'Authorised', 'Get customer authorisation'],
+  ['worked', 'Work done', 'Record the work carried out'],
+  ['qc', 'QC passed', 'Quality check & sign off'],
+  ['paid', 'Paid', 'Take payment'],
+];
+
+export function jobProgress(job) {
+  const card = normalizeCard(job.job_card);
+  const done = {
+    checked: Object.values(card.checks).some(Boolean) || Boolean(card.diagnosis.trim()),
+    priced: cardTotals(card).total > 0,
+    authorised: card.authorised,
+    worked: Boolean(card.work_notes.trim()),
+    qc: card.qc_passed,
+    paid: job.payment_status === 'Paid',
+  };
+  const next = STAGES.find(([key]) => !done[key]);
+  return { card, done, completed: STAGES.filter(([key]) => done[key]).length, next: next ? next[2] : null };
 }

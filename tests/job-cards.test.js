@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
-import { CHECKLIST, cardTotals, checkSummary, emptyCard, normalizeCard } from '../src/jobCard.js';
+import { CHECKLIST, cardTotals, checkSummary, emptyCard, jobProgress, labourCost, normalizeCard, withLabourCost } from '../src/jobCard.js';
 
 const owner = '11111111-1111-4111-8111-111111111111';
 const outsider = '22222222-2222-4222-8222-222222222222';
@@ -30,6 +30,27 @@ test('receipt totals multiply quantities and hours, ignoring blank or negative v
     labour: [{ description: 'Fit pads', hours: '1.5', rate: '45' }, { description: 'Diagnosis', hours: '0.1', rate: '0.3' }],
   });
   assert.deepEqual(cardTotals(card), { parts: 49.98, labour: 67.53, total: 117.51 });
+});
+
+test('manual labour cost overrides hours x rate, which fills it in when both are entered', () => {
+  assert.equal(labourCost({ description: 'Diagnosis', hours: '', rate: '', cost: '35' }), 35);
+  assert.equal(labourCost({ description: 'Fit', hours: '2', rate: '45', cost: '80' }), 80);
+  assert.equal(labourCost({ description: 'Old line', hours: '2', rate: '45' }), 90);
+  assert.equal(labourCost({ description: 'Blank', hours: '', rate: '', cost: '' }), 0);
+  assert.deepEqual(withLabourCost({ hours: '1.5', rate: '50', cost: '' }, 'rate'), { hours: '1.5', rate: '50', cost: '75.00' });
+  assert.deepEqual(withLabourCost({ hours: '1.5', rate: '', cost: '60' }, 'hours'), { hours: '1.5', rate: '', cost: '60' });
+  assert.deepEqual(withLabourCost({ hours: '1.5', rate: '50', cost: '60' }, 'cost'), { hours: '1.5', rate: '50', cost: '60' });
+});
+
+test('job progress follows checked, priced, authorised, work done, QC and paid', () => {
+  assert.deepEqual(jobProgress({ job_card: {}, payment_status: 'Unpaid' }).completed, 0);
+  assert.equal(jobProgress({ job_card: {}, payment_status: 'Unpaid' }).next, 'Start the inspection');
+  assert.equal(jobProgress({ job_card: { checks: { 1: null } }, payment_status: 'Unpaid' }).done.checked, false);
+  const priced = jobProgress({ job_card: { checks: { 1: 'ok' }, labour: [{ description: 'Pads', cost: '40' }] }, payment_status: 'Unpaid' });
+  assert.equal(priced.next, 'Get customer authorisation');
+  const done = jobProgress({ job_card: { diagnosis: 'Worn pads', parts: [{ description: 'Pads', qty: '1', unit_cost: '30' }], authorised: true, work_notes: 'Fitted', qc_passed: true }, payment_status: 'Paid' });
+  assert.equal(done.completed, 6);
+  assert.equal(done.next, null);
 });
 
 test('job card migration stores cards for the owner only', async (t) => {

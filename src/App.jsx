@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, Wrench, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, Wrench, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
 import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, SERVICES, validRegistration, validateBooking } from './utils.js';
 import { cardTotals, normalizeCard } from './jobCard.js';
 import HelpPage from './HelpPage.jsx';
-import { JobCardForm, Receipt } from './JobCard.jsx';
+import { JobCardForm, JobCardsBoard, Receipt } from './JobCard.jsx';
+import PhotoCarousel from './PhotoCarousel.jsx';
 import MonthCalendar from './MonthCalendar.jsx';
 
 const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', service_type: '' };
@@ -19,6 +20,18 @@ function Field({ label, children, hint }) {
 }
 
 function Spinner() { return <LoaderCircle className="spin" size={18} aria-hidden="true" />; }
+
+const OTHER_SERVICE = '__other__';
+const validService = (value) => value.trim().length > 0 && value.trim().length <= 200;
+
+// Preset services plus a free-text option, so customers can describe any job.
+function ServicePicker({ value, onChange, required = false, emptyLabel = 'Please Select' }) {
+  const [other, setOther] = useState(() => value !== '' && !SERVICES.includes(value));
+  return <>
+    <Field label="Tell us what you need"><select required={required} value={other ? OTHER_SERVICE : value} onChange={(e) => { const next = e.target.value; setOther(next === OTHER_SERVICE); onChange(next === OTHER_SERVICE ? '' : next); }}><option value="">{emptyLabel}</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}<option value={OTHER_SERVICE}>Something else (describe it)</option></select></Field>
+    {other && <Field label="Describe what you need" hint="e.g. knocking noise from the front, clutch slipping, air con not cold"><input required={required} maxLength={200} autoFocus value={value} onChange={(e) => onChange(e.target.value)} /></Field>}
+  </>;
+}
 
 function BookingForm({ admin = false, onCreated }) {
   const [form, setForm] = useState(() => {
@@ -71,7 +84,7 @@ function BookingForm({ admin = false, onCreated }) {
     event.preventDefault();
     const validation = validateBooking(form);
     if (validation) { setError(validation); return; }
-    if (!SERVICES.includes(form.service_type)) { setError('Please tell us what work you need.'); return; }
+    if (!validService(form.service_type)) { setError('Please tell us what work you need.'); return; }
     if (lookup.state === 'found' && !confirmed) { setError('Please confirm that the vehicle details are correct.'); return; }
     if (configurationError) { setError(configurationError); return; }
     setBusy(true);
@@ -88,7 +101,7 @@ function BookingForm({ admin = false, onCreated }) {
         p_engine_capacity: form.engine_capacity.trim() || null,
         p_booking_date: form.booking_date,
         p_status: admin ? 'Booked' : 'Pending Confirmation',
-        p_service_type: form.service_type,
+        p_service_type: form.service_type.trim(),
       });
       if (dbError) throw dbError;
       setSent(true);
@@ -110,7 +123,7 @@ function BookingForm({ admin = false, onCreated }) {
 
   return <form onSubmit={submit} className="booking-form">
     <fieldset disabled={busy}>
-      <Field label="Tell us what you need"><select required value={form.service_type} onChange={(e) => change('service_type', e.target.value)}><option value="">Please Select</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}</select></Field>
+      <ServicePicker required value={form.service_type} onChange={(value) => change('service_type', value)} />
       <div className="form-section-label"><span>01</span> YOUR DETAILS</div>
       <div className="two-columns">
         <Field label="First name"><input autoComplete="given-name" required maxLength={80} placeholder="e.g. James" value={form.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field>
@@ -151,16 +164,9 @@ function PublicPage() {
         <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
         <p className="hero-description">A friendly face. Honest advice. A car that's ready for the road. Book your next visit with Andy's Beechwood Car Care.</p>
         <div className="hero-features"><span><CheckCircle2 size={17} /> Personal service</span><span><CheckCircle2 size={17} /> Straightforward booking</span></div>
-        <div className="workshop-art" aria-hidden="true">
-          <div className="art-grid" /><div className="art-label"><span className="dot" /> A LITTLE CARE GOES A LONG WAY</div>
-          <svg viewBox="0 0 520 220" className="car-illustration" fill="none">
-            <path d="M77 149h365l-13-44-105-12-52-54H166l-48 61-38 14-3 35Z" fill="#dce5ce" stroke="#183c30" strokeWidth="4" strokeLinejoin="round" />
-            <path d="m166 49-35 51h177l-44-51h-98Z" fill="#f8f8ee" stroke="#183c30" strokeWidth="3" /><path d="M210 50v50m107 1 9 49M116 111l-7 40m102-40v39" stroke="#183c30" strokeWidth="3" />
-            <path d="M230 113h17M334 113h16M82 122h22m314-10h16" stroke="#183c30" strokeWidth="4" strokeLinecap="round" />
-            <path d="M61 152h393" stroke="#183c30" strokeWidth="5" strokeLinecap="round" />
-            <circle cx="151" cy="153" r="29" fill="#183c30" /><circle cx="151" cy="153" r="13" fill="#f5f2e9" /><circle cx="373" cy="153" r="29" fill="#183c30" /><circle cx="373" cy="153" r="13" fill="#f5f2e9" />
-            <path d="M79 189h357" stroke="#b4c2ad" strokeWidth="2" /><path d="m421 64 7-11m-3 24 14-2M97 64l-10-8" stroke="#a0af91" strokeWidth="3" strokeLinecap="round" />
-          </svg>
+        <div className="workshop-art">
+          <div className="art-grid" aria-hidden="true" /><div className="art-label" aria-hidden="true"><span className="dot" /> A LITTLE CARE GOES A LONG WAY</div>
+          <PhotoCarousel />
           <div className="art-caption"><Wrench size={16} /><span>Keeping you moving, one visit at a time.</span></div>
         </div>
       </section>
@@ -236,7 +242,7 @@ function JobEditor({ job, initialTab = 'booking', onClose, onSaved, onDeleted })
     if (savingRef.current || deletingRef.current) return false;
     const validation = validateBooking(draft, { allowPast: true });
     if (validation) { setError(validation); return false; }
-    if (draft.service_type && !SERVICES.includes(draft.service_type)) { setError('Choose a supported service.'); return false; }
+    if (draft.service_type.length > 200) { setError('Keep the work description to 200 characters or fewer.'); return false; }
     if (!draft.booking_date || !JOB_STATUSES.includes(draft.status) || !PAYMENT_STATUSES.includes(draft.payment_status)) {
       setError('Please choose a date, job status, and payment status.'); return false;
     }
@@ -338,7 +344,7 @@ function JobEditor({ job, initialTab = 'booking', onClose, onSaved, onDeleted })
         <Field label="Vehicle registration"><input required maxLength={10} value={draft.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /></Field>
         <div className="two-columns"><Field label="Make"><input required maxLength={100} value={draft.make} onChange={(e) => change('make', e.target.value)} /></Field><Field label="Model"><input required maxLength={100} value={draft.model} onChange={(e) => change('model', e.target.value)} /></Field></div>
         <div className="two-columns"><Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={draft.year} onChange={(e) => change('year', e.target.value)} /></Field><Field label="Engine capacity (optional)"><input maxLength={50} value={draft.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field></div>
-        <Field label="Tell us what you need"><select value={draft.service_type} onChange={(e) => change('service_type', e.target.value)}><option value="">Not specified (existing booking)</option>{SERVICES.map((service) => <option key={service}>{service}</option>)}</select></Field>
+        <ServicePicker value={draft.service_type} onChange={(value) => change('service_type', value)} emptyLabel="Not specified (existing booking)" />
         <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job in the agenda."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && draft.status !== 'Pending Confirmation' && draft.status !== 'Completed') change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
         <Field label="Diagnosis & service notes"><textarea rows={5} maxLength={10000} placeholder="What's happening with this vehicle?" value={draft.diagnosis_notes} onChange={(e) => change('diagnosis_notes', e.target.value)} /></Field>
         <Field label="Parts ordered"><textarea rows={3} maxLength={10000} placeholder="Parts, part numbers, supplier details..." value={draft.parts_ordered} onChange={(e) => change('parts_ordered', e.target.value)} /></Field>
@@ -490,10 +496,10 @@ function Dashboard({ session }) {
   if (view === 'history') filtered.reverse();
   const open = (job, tab = 'booking') => setEditing({ job, tab });
   const savedJob = useCallback(() => { void load(); }, [load]);
-  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : 'Run a plate';
+  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : view === 'cards' ? 'Job cards' : 'Run a plate';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }, { key: 'lookup', icon: CarFront, label: 'Run a plate' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'cards', icon: ClipboardCheck, label: 'Job cards' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }, { key: 'lookup', icon: CarFront, label: 'Run a plate' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
@@ -502,7 +508,7 @@ function Dashboard({ session }) {
         <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
         {view !== 'lookup' && <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>}
         {view !== 'lookup' && pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => open(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
-        {view === 'lookup' ? <PlateLookup enabled={authorized} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
+        {view === 'lookup' ? <PlateLookup enabled={authorized} /> : view === 'cards' ? <JobCardsBoard jobs={jobs} loading={loading} authorized={authorized} onOpen={(job) => open(job, 'card')} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
           {view === 'agenda' && <div className="calendar-view-toggle" role="group" aria-label="Calendar view"><button className="button button-small button-outline" aria-pressed={calendarView === 'week'} onClick={() => { setCalendarView('week'); setWeek(date); }}>Week</button><button className="button button-small button-outline" aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Whole month</button>{calendarView === 'month' && <button className="button button-small button-outline" onClick={() => setDate(localDate())}>Today</button>}</div>}
           {view === 'agenda' && calendarView === 'month' && <MonthCalendar date={date} jobs={jobs} onSelect={(day) => { setDate(day); setWeek(day); }} />}
           <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : view === 'history' ? 'Most recent first. Open a job to view or print its receipt.' : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>

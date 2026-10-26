@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { BadgeCheck, NotebookPen, Package, Plus, ScanSearch, Stethoscope, Trash2 } from 'lucide-react';
-import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, WHEEL_POSITIONS, cardTotals, checkSummary, labourCost, partCost } from './jobCard.js';
+import { BadgeCheck, CarFront, Check, ChevronRight, ClipboardCheck, NotebookPen, Package, Plus, ScanSearch, Search, Stethoscope, Trash2 } from 'lucide-react';
+import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, STAGES, WHEEL_POSITIONS, cardTotals, checkSummary, jobProgress, labourCost, partCost, withLabourCost } from './jobCard.js';
 import { dateLabel, money, WORKSHOP } from './utils.js';
 
 function Field({ label, children, hint }) {
@@ -15,11 +15,14 @@ function Step({ number, title, icon: Icon, summary, children }) {
 }
 
 function ChecklistSection({ section, card, onCheck, onValue, onAllOk }) {
+  const done = section.items.filter(([id]) => card.checks[id]).length;
   return <div className="checklist-section">
-    <div className="checklist-heading"><h4>{section.title}</h4><button type="button" className="button button-outline button-small" onClick={() => onAllOk(section)}>Mark unset as OK</button></div>
+    <div className="checklist-heading"><h4>{section.title}</h4><small>{done} of {section.items.length} checked</small><button type="button" className="button button-outline button-small" onClick={() => onAllOk(section)}>Mark unset as OK</button></div>
+    <div className="checklist-columns" aria-hidden="true"><span>No.</span><span>Check</span><div>{CHECK_RESULTS.map(([value, text]) => <span key={value}>{text}</span>)}</div></div>
     {section.items.map(([id, label, inputs = []]) => <div className="checklist-row" key={id}>
-      <div className="checklist-label"><span>{id}.</span><span>{label}</span>{inputs.map(([key, suffix]) => <label key={key} className="checklist-input"><input aria-label={`${label} ${suffix}`} maxLength={80} value={card.values[key] || ''} onChange={(e) => onValue(key, e.target.value)} /><small>{suffix}</small></label>)}</div>
-      <div className="check-buttons" role="group" aria-label={`${id}. ${label}`}>{CHECK_RESULTS.map(([value, text]) => <button type="button" key={value} className={`check-${value}`} aria-pressed={card.checks[id] === value} onClick={() => onCheck(id, card.checks[id] === value ? null : value)}>{text}</button>)}</div>
+      <span className="checklist-number">{id}</span>
+      <div className="checklist-label"><span>{label}</span>{inputs.length > 0 && <div className="checklist-inputs">{inputs.map(([key, suffix]) => <label key={key} className="checklist-input"><input aria-label={`${label} ${suffix}`} maxLength={80} value={card.values[key] || ''} onChange={(e) => onValue(key, e.target.value)} /><small>{suffix}</small></label>)}</div>}</div>
+      <div className="check-buttons" role="group" aria-label={`${id}. ${label}`}>{CHECK_RESULTS.map(([value, text]) => <button type="button" key={value} className={`check-${value}`} aria-pressed={card.checks[id] === value} onClick={() => onCheck(id, card.checks[id] === value ? null : value)}>{card.checks[id] === value && <Check size={14} aria-hidden="true" />}<span>{text}</span></button>)}</div>
     </div>)}
   </div>;
 }
@@ -89,14 +92,14 @@ function VehicleInspection({ damage, onChange }) {
   </div>;
 }
 
-function LineItems({ caption, lines, columns, cost, blank, onChange }) {
-  const update = (index, key, value) => onChange(lines.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
+function LineItems({ caption, lines, columns, cost, blank, onChange, transform = (line) => line }) {
+  const update = (index, key, value) => onChange(lines.map((line, i) => (i === index ? transform({ ...line, [key]: value }, key) : line)));
   return <div className="line-items">
     <h4>{caption}</h4>
     {lines.length === 0 && <p className="muted">Nothing added yet.</p>}
     {lines.map((line, index) => <div className="line-item" key={index}>
       {columns.map(([key, label, props]) => <Field key={key} label={label}><input {...props} value={line[key]} onChange={(e) => update(index, key, e.target.value)} /></Field>)}
-      <div className="line-cost"><small>Cost</small><strong>{money(cost(line))}</strong></div>
+      {cost && <div className="line-cost"><small>Cost</small><strong>{money(cost(line))}</strong></div>}
       <button type="button" className="icon-button" aria-label={`Remove ${caption.toLowerCase()} line ${index + 1}`} onClick={() => onChange(lines.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
     </div>)}
     <button type="button" className="button button-outline button-small" onClick={() => onChange([...lines, blank])}><Plus size={15} /> Add {caption.toLowerCase()} line</button>
@@ -143,11 +146,16 @@ export function JobCardForm({ card, onChange }) {
       <VehicleInspection damage={card.damage} onChange={(damage) => set('damage', damage)} />
       <Field label="Inspection notes"><textarea rows={2} maxLength={2000} placeholder="General condition, existing damage pointed out to the customer..." value={card.inspection_notes} onChange={(e) => set('inspection_notes', e.target.value)} /></Field>
     </Step>
-    <Step number="3" title="Estimated parts & labour" icon={Package} summary={money(totals.total)}>
+    <Step number="3" title="Estimated parts & labour" icon={Package} summary={`${money(totals.total)}${card.authorised ? ' · authorised' : ''}`}>
       <LineItems caption="Parts" lines={card.parts} cost={partCost} blank={{ description: '', part_no: '', qty: '1', unit_cost: '' }} onChange={(parts) => set('parts', parts)}
         columns={[['description', 'Part', { maxLength: 200, required: true }], ['part_no', 'Part no.', { maxLength: 60 }], ['qty', 'Qty', { type: 'number', min: '0', step: '1', inputMode: 'numeric' }], ['unit_cost', 'Unit price (£)', money2]]} />
-      <LineItems caption="Labour" lines={card.labour} cost={labourCost} blank={{ description: '', hours: '', rate: '' }} onChange={(labour) => set('labour', labour)}
-        columns={[['description', 'Work', { maxLength: 200, required: true }], ['hours', 'Hours', { type: 'number', min: '0', step: '0.25', inputMode: 'decimal' }], ['rate', 'Rate (£/hr)', money2]]} />
+      <LineItems caption="Labour" lines={card.labour} blank={{ description: '', hours: '', rate: '', cost: '' }} transform={withLabourCost} onChange={(labour) => set('labour', labour)}
+        columns={[['description', 'Work', { maxLength: 200, required: true }], ['hours', 'Hours (optional)', { type: 'number', min: '0', step: '0.25', inputMode: 'decimal' }], ['rate', 'Rate £/hr (optional)', money2], ['cost', 'Labour cost (£)', money2]]} />
+      <p className="muted small-text">Type the labour cost directly, or enter hours and a rate to work it out.</p>
+      <div className="authorisation">
+        <label className="check-label"><input type="checkbox" checked={card.authorised} onChange={(e) => set('authorised', e.target.checked)} /> Customer authorised this estimate</label>
+        <Field label="How and when it was authorised"><input maxLength={200} placeholder="e.g. Phone call, 26 Oct 10:30" value={card.authorised_note} onChange={(e) => set('authorised_note', e.target.value)} /></Field>
+      </div>
       <dl className="card-totals"><div><dt>Parts</dt><dd>{money(totals.parts)}</dd></div><div><dt>Labour</dt><dd>{money(totals.labour)}</dd></div><div><dt>Total</dt><dd>{money(totals.total)}</dd></div></dl>
     </Step>
     <Step number="4" title="Work carried out" icon={NotebookPen}>
@@ -192,8 +200,8 @@ export function Receipt({ jobId, details, card, issued }) {
     {details.service_type && <p className="receipt-service"><strong>Service:</strong> {details.service_type}</p>}
     <table className="receipt-table">
       <caption>Labour</caption>
-      <thead><tr><th scope="col">Description</th><th scope="col">Hours</th><th scope="col">Rate</th><th scope="col">Cost</th></tr></thead>
-      <tbody>{labour.length ? labour.map((line, i) => <tr key={i}><td>{line.description}</td><td>{line.hours}</td><td>{money(line.rate)}</td><td>{money(labourCost(line))}</td></tr>) : <tr><td colSpan={4}>No labour charged</td></tr>}</tbody>
+      <thead><tr><th scope="col">Description</th><th scope="col">Hours</th><th scope="col">Cost</th></tr></thead>
+      <tbody>{labour.length ? labour.map((line, i) => <tr key={i}><td>{line.description}</td><td>{line.hours || '—'}</td><td>{money(labourCost(line))}</td></tr>) : <tr><td colSpan={3}>No labour charged</td></tr>}</tbody>
     </table>
     <table className="receipt-table">
       <caption>Parts</caption>
@@ -210,4 +218,33 @@ export function Receipt({ jobId, details, card, issued }) {
     {(advisories.length > 0 || extra.length > 0) && <section className="receipt-notes"><h3>Advisories & recommended work</h3><ul>{[...advisories, ...extra].map((item) => <li key={item}>{item}</li>)}</ul></section>}
     <footer className="receipt-footer">Thank you for choosing {WORKSHOP.name}.</footer>
   </article>;
+}
+
+const BOARD_FILTERS = [['active', 'In the workshop'], ['completed', 'Completed'], ['all', 'All jobs']];
+
+export function JobCardsBoard({ jobs, loading, authorized, onOpen }) {
+  const [filter, setFilter] = useState('active');
+  const [search, setSearch] = useState('');
+  const term = search.toLowerCase().trim();
+  const listed = jobs
+    .filter((job) => job.status !== 'Pending Confirmation')
+    .filter((job) => filter === 'all' || (filter === 'completed' ? job.status === 'Completed' : job.status !== 'Completed'))
+    .filter((job) => `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(term))
+    .map((job) => ({ job, progress: jobProgress(job) }));
+  if (filter !== 'active') listed.reverse();
+  return <section className="agenda-panel job-board">
+    <div className="agenda-heading">
+      <div><h2>Job cards</h2><p className="muted">Each job moves through checked, priced, authorised, work done, QC and paid. Open a card to carry on where you left off.</p></div>
+      <div className="search-input"><Search size={17} /><input aria-label="Search job cards" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+    </div>
+    <div className="calendar-view-toggle board-filters" role="group" aria-label="Show job cards">{BOARD_FILTERS.map(([key, label]) => <button key={key} type="button" className="button button-small button-outline" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}</div>
+    {loading ? <div className="empty-state"><h3>Loading job cards...</h3></div> : !authorized ? <div className="empty-state"><h3>Workshop connection required</h3></div> : listed.length === 0 ? <div className="empty-state"><ClipboardCheck size={34} /><h3>{search ? 'No matching job cards.' : 'No job cards here.'}</h3><p>{filter === 'active' ? 'Approved bookings appear here ready for their job card.' : 'Try another filter.'}</p></div> :
+      <div className="board-grid">{listed.map(({ job, progress }) => <button type="button" key={job.id} className="board-card" onClick={() => onOpen(job)} aria-label={`Open job card for ${job.vehicle?.reg_no}`}>
+        <div className="board-card-top"><strong className="registration">{job.vehicle?.reg_no}</strong><span className={`status status-${job.status.toLowerCase().replaceAll(' ', '-')}`}><span />{job.status}</span></div>
+        <div className="board-card-vehicle"><CarFront size={16} /><div><strong>{job.vehicle?.make} {job.vehicle?.model}</strong><span>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name} · {dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>{job.service_type && <span>{job.service_type}</span>}</div></div>
+        <ol className="stage-track" aria-label={`${progress.completed} of ${STAGES.length} stages complete`}>{STAGES.map(([key, label]) => <li key={key} className={progress.done[key] ? 'stage-done' : ''}><span />{label}</li>)}</ol>
+        <div className="board-card-footer"><span className={progress.next ? 'next-step' : 'next-step next-done'}>{progress.next ? `Next: ${progress.next}` : 'All stages complete'}</span><strong>{money(cardTotals(progress.card).total)}</strong><ChevronRight size={16} /></div>
+      </button>)}</div>}
+    <div className="agenda-footer"><span>{listed.length} {listed.length === 1 ? 'job card' : 'job cards'}</span></div>
+  </section>;
 }
