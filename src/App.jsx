@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, LoaderCircle, LogOut, Menu, Plus, Search, ShieldCheck, Wrench, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock3, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, Wrench, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
 import { addDays, dateLabel, JOB_STATUSES, localDate, money, normalizeRegistration, PAYMENT_STATUSES, SERVICES, validRegistration, validateBooking } from './utils.js';
+import { cardTotals, normalizeCard } from './jobCard.js';
 import HelpPage from './HelpPage.jsx';
+import { JobCardForm, Receipt } from './JobCard.jsx';
 import MonthCalendar from './MonthCalendar.jsx';
 
 const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', service_type: '' };
@@ -190,7 +193,7 @@ function Login() {
   return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><div className="login-heading"><span className="small-icon"><ShieldCheck size={23} /></span><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back, Andy.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop owner only.</p></div></div>;
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, className = '' }) {
   const ref = useRef(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -200,7 +203,7 @@ function Modal({ title, onClose, children }) {
     dialog.showModal();
     return () => { dialog.close(); previous?.focus(); };
   }, []);
-  return <dialog ref={ref} className="modal" aria-labelledby="modal-title" onCancel={(e) => { e.preventDefault(); close.current(); }}><header className="modal-header"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={21} /></button></header><div className="modal-body">{children}</div></dialog>;
+  return <dialog ref={ref} className={`modal ${className}`} aria-labelledby="modal-title" onCancel={(e) => { e.preventDefault(); close.current(); }}><header className="modal-header"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={21} /></button></header><div className="modal-body">{children}</div></dialog>;
 }
 
 function jobDraft(job) {
@@ -209,7 +212,7 @@ function jobDraft(job) {
   return { booking_date: job.booking_date, status: job.status, service_type: job.service_type || '', diagnosis_notes: job.diagnosis_notes || '', parts_ordered: job.parts_ordered || '', amount_due: String(job.amount_due ?? 0), payment_status: job.payment_status || 'Unpaid', first_name: customer?.first_name || '', last_name: customer?.last_name || '', phone: customer?.phone || '', reg_no: vehicle?.reg_no || '', make: vehicle?.make || '', model: vehicle?.model || '', year: String(vehicle?.year || ''), engine_capacity: vehicle?.engine_capacity || '' };
 }
 
-function JobEditor({ job, onClose, onSaved, onDeleted }) {
+function JobEditor({ job, initialTab = 'booking', onClose, onSaved, onDeleted }) {
   const [draft, setDraft] = useState(() => jobDraft(job));
   const [saved, setSaved] = useState(() => JSON.stringify(jobDraft(job)));
   const [saving, setSaving] = useState(false);
@@ -217,6 +220,14 @@ function JobEditor({ job, onClose, onSaved, onDeleted }) {
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
   const savingRef = useRef(false);
+  const [tab, setTab] = useState(initialTab);
+  const [card, setCard] = useState(() => normalizeCard(job.job_card));
+  const [savedCard, setSavedCard] = useState(() => JSON.stringify(normalizeCard(job.job_card)));
+  const [cardSaving, setCardSaving] = useState(false);
+  const [cardError, setCardError] = useState('');
+  const cardSavingRef = useRef(false);
+  const cardDirty = JSON.stringify(card) !== savedCard;
+  const totals = cardTotals(card);
   const dirty = JSON.stringify(draft) !== saved;
   const customer = job.vehicle?.customer;
   const vehicle = job.vehicle;
@@ -249,20 +260,40 @@ function JobEditor({ job, onClose, onSaved, onDeleted }) {
     const timer = setTimeout(() => { void save(); }, 1000);
     return () => clearTimeout(timer);
   }, [dirty, saving, deleting, error, save]);
+  const changeCard = (update) => { setCardError(''); setCard(update); };
+  const saveCard = useCallback(async () => {
+    if (cardSavingRef.current || deletingRef.current) return false;
+    cardSavingRef.current = true;
+    setCardSaving(true);
+    setCardError('');
+    try {
+      const { error: dbError } = await supabase.rpc('save_job_card', { p_job_id: job.id, p_card: card });
+      if (dbError) throw dbError;
+      setSavedCard(JSON.stringify(card));
+      onSaved();
+      return true;
+    } catch (err) { setCardError(`Job card could not be saved: ${err.message}`); return false; }
+    finally { cardSavingRef.current = false; setCardSaving(false); }
+  }, [card, job, onSaved]);
+  useEffect(() => {
+    if (!cardDirty || cardSaving || deleting || cardError) return;
+    const timer = setTimeout(() => { void saveCard(); }, 1000);
+    return () => clearTimeout(timer);
+  }, [cardDirty, cardSaving, deleting, cardError, saveCard]);
   const close = () => {
-    if (savingRef.current || deletingRef.current) { setError('Please wait for the current operation to finish.'); return; }
-    if (dirty && !window.confirm('Your changes have not been saved. Close and discard them?')) return;
+    if (savingRef.current || cardSavingRef.current || deletingRef.current) { setError('Please wait for the current operation to finish.'); return; }
+    if ((dirty || cardDirty) && !window.confirm('Your changes have not been saved. Close and discard them?')) return;
     onClose();
   };
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !cardDirty) return;
     const handler = (event) => { event.preventDefault(); event.returnValue = ''; };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [dirty]);
+  }, [dirty, cardDirty]);
 
   async function deleteBooking() {
-    if (savingRef.current || deletingRef.current) return;
+    if (savingRef.current || cardSavingRef.current || deletingRef.current) return;
     const persisted = JSON.parse(saved);
     if (!window.confirm(`Permanently delete booking ${persisted.reg_no} on ${dateLabel(persisted.booking_date)}? This removes the booking, notes and payment record and cannot be undone. Other bookings are kept.`)) return;
     deletingRef.current = true;
@@ -277,9 +308,28 @@ function JobEditor({ job, onClose, onSaved, onDeleted }) {
     finally { deletingRef.current = false; setDeleting(false); }
   }
 
-  return <Modal title="Job record" onClose={close}>
+  const tabs = [['booking', 'Booking'], ['card', 'Job card'], ['receipt', 'Receipt']];
+  return <Modal title="Job record" onClose={close} className="modal-wide">
     <div className="job-summary"><strong className="registration">{vehicle?.reg_no || 'No registration'}</strong><div><h3>{vehicle?.make} {vehicle?.model}</h3><p>{customer?.first_name} {customer?.last_name}{vehicle?.year ? ` / ${vehicle.year}` : ''}{vehicle?.engine_capacity ? ` / ${vehicle.engine_capacity}` : ''}</p></div></div>
     {customer?.phone && <a className="phone-link" href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`}>{customer.phone} <ArrowRight size={15} /></a>}
+    <div className="editor-tabs" role="tablist" aria-label="Job record sections">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}</div>
+    {tab === 'card' && <div role="tabpanel" id="panel-card" aria-labelledby="tab-card">
+      <JobCardForm card={card} onChange={changeCard} />
+      <Notice>{cardError}</Notice>
+      <div className="editor-footer"><span className="save-state" role="status">{cardSaving ? <><Spinner /> Saving...</> : cardDirty ? 'Unsaved changes' : <><Check size={16} /> Job card saved</>}</span><button type="button" className="button button-primary" disabled={cardSaving || deleting || !cardDirty} onClick={() => { void saveCard(); }}>{cardSaving ? 'Saving...' : 'Save job card'}</button></div>
+      <p className="muted small-text">The job card saves automatically after you stop typing.</p>
+    </div>}
+    {tab === 'receipt' && <div role="tabpanel" id="panel-receipt" aria-labelledby="tab-receipt">
+      <div className="receipt-actions">
+        <button type="button" className="button button-primary" onClick={() => window.print()}><Printer size={17} /> Print receipt</button>
+        {Number(draft.amount_due) !== totals.total && <button type="button" className="button button-outline" disabled={saving} onClick={() => change('amount_due', totals.total.toFixed(2))}>Set amount due to {money(totals.total)}</button>}
+      </div>
+      <p className="muted small-text">Labour and parts come from the job card. Amount due on the booking: {money(draft.amount_due)} ({draft.payment_status}).</p>
+      <Notice>{error || cardError}</Notice>
+      <Receipt jobId={job.id} details={draft} card={card} issued={localDate()} />
+    </div>}
+    {createPortal(<div className="print-receipt"><Receipt jobId={job.id} details={draft} card={card} issued={localDate()} /></div>, document.body)}
+    {tab === 'booking' && <div role="tabpanel" id="panel-booking" aria-labelledby="tab-booking">
     <form onSubmit={async (e) => { e.preventDefault(); if (await save()) onClose(); }}>
       <fieldset disabled={saving || deleting}>
         <p className="muted editor-warning">Customer details are shared with their other bookings. Vehicle corrections apply to all bookings for this vehicle.</p>
@@ -298,6 +348,7 @@ function JobEditor({ job, onClose, onSaved, onDeleted }) {
       <p className="muted small-text">Changes save automatically after you stop typing. Moving a pending request does not approve it.</p>
     </form>
     <div className="delete-booking"><p className="muted">Remove a test or incorrect booking permanently. The customer, vehicle and other bookings are retained.</p><button type="button" className="button button-danger" disabled={saving || deleting} onClick={deleteBooking}>{deleting ? <Spinner /> : <X size={16} />}{deleting ? 'Deleting...' : 'Delete booking'}</button></div>
+    </div>}
   </Modal>;
 }
 
@@ -309,7 +360,7 @@ function JobRow({ job, view, onOpen }) {
   return <button className="job-row" onClick={onOpen} aria-label={`Open job ${job.vehicle?.reg_no}`}>
     <div className="vehicle-cell"><span className="car-cell-icon"><CarFront size={21} /></span><div><strong className="reg-text">{job.vehicle?.reg_no}</strong><span>{job.vehicle?.make} {job.vehicle?.model}</span><small>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</small>{job.service_type && <small>{job.service_type}</small>}</div></div>
     <div className="job-status-cell">{view !== 'agenda' && <small>{dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</small>}<Status value={job.status} /></div>
-    <div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong><ChevronRight size={18} className="row-arrow" />
+    <div><Status value={job.payment_status} /></div><strong className="amount-cell">{money(job.amount_due)}</strong>{view === 'history' ? <Printer size={18} className="row-arrow" aria-label="View receipt" /> : <ChevronRight size={18} className="row-arrow" />}
   </button>;
 }
 
@@ -435,11 +486,14 @@ function Dashboard({ session }) {
     if (view === 'history' && job.status !== 'Completed') return false;
     return `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(search.toLowerCase().trim());
   });
+  // Past receipts are easier to find with the most recent job first.
+  if (view === 'history') filtered.reverse();
+  const open = (job, tab = 'booking') => setEditing({ job, tab });
   const savedJob = useCallback(() => { void load(); }, [load]);
   const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : 'Run a plate';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }, { key: 'lookup', icon: CarFront, label: 'Run a plate' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><CarFront size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{[{ key: 'agenda', icon: CalendarDays, label: 'Workshop agenda' }, { key: 'payments', icon: CreditCard, label: 'Payments' }, { key: 'history', icon: ClipboardList, label: 'Completed jobs' }, { key: 'lookup', icon: CarFront, label: 'Run a plate' }].map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">A</div><div><strong>Workshop owner</strong><small>{session.user.email}</small></div><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
@@ -447,20 +501,20 @@ function Dashboard({ session }) {
         <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">{view === 'lookup' ? 'Quick vehicle checks for the workshop.' : 'Your bookings, your jobs, everything in one place.'}</p></div><button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button></div>
         <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
         {view !== 'lookup' && <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div><div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div></div>}
-        {view !== 'lookup' && pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => setEditing(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
+        {view !== 'lookup' && pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}</span>{job.service_type && <span>{job.service_type}</span>}{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => open(job)}>Edit / delete booking</button><button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button></div></div>)}</div></section>}
         {view === 'lookup' ? <PlateLookup enabled={authorized} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
           {view === 'agenda' && <div className="calendar-view-toggle" role="group" aria-label="Calendar view"><button className="button button-small button-outline" aria-pressed={calendarView === 'week'} onClick={() => { setCalendarView('week'); setWeek(date); }}>Week</button><button className="button button-small button-outline" aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Whole month</button>{calendarView === 'month' && <button className="button button-small button-outline" onClick={() => setDate(localDate())}>Today</button>}</div>}
           {view === 'agenda' && calendarView === 'month' && <MonthCalendar date={date} jobs={jobs} onSelect={(day) => { setDate(day); setWeek(day); }} />}
-          <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
+          <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : view === 'history' ? 'Most recent first. Open a job to view or print its receipt.' : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder="Search name or registration" value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
           {view === 'agenda' && <><div className="calendar-controls"><button className="button button-outline button-small" onClick={() => { setDate(localDate()); setWeek(localDate()); }}>Today</button><label className="date-jump"><CalendarDays size={16} /><input type="date" aria-label="Go to agenda date" value={date} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setWeek(e.target.value); } }} /></label><div className="week-controls"><button className="icon-button" aria-label="Previous seven days" onClick={() => { setWeek(addDays(week, -7)); setDate(addDays(week, -7)); }}><ChevronLeft size={20} /></button><button className="icon-button" aria-label="Next seven days" onClick={() => { setWeek(addDays(week, 7)); setDate(addDays(week, 7)); }}><ChevronRight size={20} /></button></div></div><div className="date-tabs">{Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => { const count = active.filter((job) => job.booking_date === day).length; return <button key={day} aria-pressed={date === day} className={date === day ? 'date-active' : ''} onClick={() => setDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric' })}</strong><span>{count ? `${count} ${count === 1 ? 'job' : 'jobs'}` : 'No active jobs'}</span></button>; })}</div></>}
           <div className="job-table"><div className="job-table-head"><span>VEHICLE / CUSTOMER</span><span>{view === 'agenda' ? 'JOB STATUS' : 'DATE / STATUS'}</span><span>PAYMENT</span><span>AMOUNT</span><span /></div>
-            {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} onOpen={() => setEditing(job)} />)}
+            {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} onOpen={() => open(job, view === 'history' ? 'receipt' : 'booking')} />)}
           </div><div className="agenda-footer"><span>{filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}{view === 'agenda' ? ' on this day' : ' in this view'}</span><span><span className="dot" /> Refreshes every 30 seconds</span></div>
         </section>}
         <footer className="dashboard-footer">Andy's Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
       </main>
     </div>
-    {editing && <JobEditor key={editing.id} job={editing} onClose={() => setEditing(null)} onSaved={savedJob} onDeleted={(id) => { ++requestRef.current; setJobs((current) => current.filter((job) => job.id !== id)); void load(); }} />}
+    {editing && <JobEditor key={editing.job.id} job={editing.job} initialTab={editing.tab} onClose={() => setEditing(null)} onSaved={savedJob} onDeleted={(id) => { ++requestRef.current; setJobs((current) => current.filter((job) => job.id !== id)); void load(); }} />}
     {creating && <Modal title="Add a workshop booking" onClose={() => { if (window.confirm('Close the booking form? Any unsent details will be lost.')) setCreating(false); }}><BookingForm admin onCreated={() => { setCreating(false); void load(); }} /></Modal>}
   </div>;
 }

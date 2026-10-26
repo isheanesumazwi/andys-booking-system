@@ -245,6 +245,106 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 .month-grid .month-selected { background: var(--green); color: white; }
 .month-grid [aria-current="date"] strong { text-decoration: underline; text-underline-offset: 4px; }
 .month-calendar > p { margin-top: 14px; }
+.modal-wide { width: min(980px, calc(100% - 30px)); }
+.editor-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+.editor-tabs button { border: 0; background: none; padding: 11px 14px; font-size: 12px; font-weight: 600; color: #7d8972; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.editor-tabs [aria-selected="true"] { color: var(--green); border-bottom-color: var(--green); }
+.three-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.job-card { display: flex; flex-direction: column; gap: 12px; }
+.card-step { border: 1px solid var(--border); border-radius: 10px; background: #fff; min-width: 0; }
+.card-step > summary { display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer; color: var(--green); }
+.card-step > summary strong { font-size: 14px; }
+.card-step > summary small { margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; }
+.card-step-number { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f1f3eb; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.card-step-body { padding: 4px 16px 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+.card-step h4 { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #5f7255; }
+.checklist-section { margin: 8px 0 20px; }
+.checklist-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.checklist-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0f2ec; }
+.checklist-label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12px; line-height: 1.5; min-width: 0; }
+.checklist-label > span:first-child { color: var(--muted); min-width: 22px; }
+.checklist-label > span:nth-child(2) { flex: 1 1 180px; min-width: 0; }
+.checklist-input { display: inline-flex; align-items: center; gap: 5px; }
+.checklist-input input { min-height: 32px; width: 120px; padding: 5px 8px; }
+.checklist-input small { font-size: 10px; color: var(--muted); }
+.check-buttons { display: flex; flex-shrink: 0; border: 1px solid #dce3d6; border-radius: 7px; overflow: hidden; }
+.check-buttons button { border: 0; background: #fff; padding: 8px 10px; font-size: 11px; color: #55664e; min-width: 58px; min-height: 36px; }
+.check-buttons button + button { border-left: 1px solid #dce3d6; }
+.check-buttons .check-ok[aria-pressed="true"] { background: #e3f0dc; color: #3d6b2f; font-weight: 700; }
+.check-buttons .check-advisory[aria-pressed="true"] { background: #fcf0cf; color: #8a6a1c; font-weight: 700; }
+.check-buttons .check-repair[aria-pressed="true"] { background: #fbe0d6; color: #954e36; font-weight: 700; }
+.wheel-table-wrap { overflow-x: auto; margin: 6px 0 12px; }
+.wheel-table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 480px; }
+.wheel-table caption { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #5f7255; padding-bottom: 8px; }
+.wheel-table th { text-align: left; font-weight: 600; color: #5f6f58; padding: 4px; }
+.wheel-table td { padding: 3px; }
+.wheel-table input { min-height: 34px; padding: 6px 8px; }
+.emissions { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; margin-top: 10px; }
+.emissions h4 { grid-column: 1 / -1; }
+.emissions .field { margin-bottom: 0; }
+.inspection { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 24px; align-items: start; margin-bottom: 14px; }
+.inspection-car { width: 100%; max-height: 480px; }
+.zone { fill: #f3f6ec; stroke: #9fb08f; stroke-width: 1.5; cursor: pointer; outline: none; }
+.zone:hover { fill: #e6edd9; }
+.zone-damaged { fill: #f6c9b6; stroke: #c2704f; }
+.zone-damaged:hover { fill: #f1b69e; }
+.zone-selected, .zone:focus-visible { stroke: var(--green); stroke-width: 3.5; }
+.diagram-label { font-size: 10px; fill: #8a9584; text-anchor: middle; letter-spacing: 1.5px; }
+.inspection-panel h4 { margin-bottom: 10px; }
+.damage-types { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.damage-types button { border: 1px solid #dce3d6; background: #fff; border-radius: 16px; padding: 7px 12px; font-size: 11px; color: #55664e; min-height: 34px; }
+.damage-types [aria-pressed="true"] { background: #fbe0d6; border-color: #e3a98f; color: #954e36; font-weight: 700; }
+.marked-heading { margin-top: 20px; }
+.marked-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.marked-list button { border: 0; background: #faf6f0; border-radius: 6px; padding: 8px 10px; text-align: left; font-size: 11px; width: 100%; color: inherit; }
+.line-items { margin-bottom: 18px; }
+.line-items h4 { margin-bottom: 10px; }
+.line-item { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.2fr) minmax(0, .8fr) minmax(0, 1fr) 84px 34px; gap: 10px; align-items: end; padding-bottom: 6px; }
+.line-items .line-item:has(> :nth-child(5):last-child) { grid-template-columns: minmax(0, 3fr) minmax(0, .9fr) minmax(0, 1fr) 84px 34px; }
+.line-cost { display: flex; flex-direction: column; gap: 7px; margin-bottom: 15px; }
+.line-cost small { font-size: 11px; color: #4a574b; font-weight: 650; }
+.line-cost strong { font-size: 13px; min-height: 28px; display: flex; align-items: center; }
+.line-item .icon-button { margin-bottom: 20px; }
+.card-totals { display: flex; justify-content: flex-end; gap: 28px; border-top: 1px solid var(--border); padding-top: 14px; margin: 0; }
+.card-totals dt { font-size: 10px; color: var(--muted); }
+.card-totals dd { margin: 4px 0 0; font-size: 16px; font-weight: 700; }
+.qc-checks { display: flex; flex-direction: column; gap: 4px; }
+.receipt-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.receipt { border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin-top: 16px; font-size: 12px; color: #1f2d24; background: #fff; }
+.receipt-header { display: flex; justify-content: space-between; gap: 20px; border-bottom: 2px solid var(--green); padding-bottom: 16px; margin-bottom: 18px; }
+.receipt-header h2 { font-size: 20px; font-weight: 750; margin-bottom: 6px; color: var(--green); }
+.receipt-header p { line-height: 1.6; }
+.receipt-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+.receipt-meta strong { font-size: 18px; letter-spacing: 2px; }
+.receipt-parties { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-bottom: 14px; }
+.receipt-parties h3, .receipt-notes h3 { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #5f7255; margin-bottom: 6px; }
+.receipt-parties p { line-height: 1.6; overflow-wrap: anywhere; }
+.receipt-service { margin-bottom: 10px; }
+.receipt-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+.receipt-table caption { text-align: left; font-weight: 700; padding-bottom: 6px; }
+.receipt-table th, .receipt-table td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.receipt-table th { font-size: 10px; color: #5f6f58; background: #f7f9f3; }
+.receipt-table th:not(:first-child), .receipt-table td:not(:first-child) { text-align: right; white-space: nowrap; }
+.receipt-totals { margin: 16px 0 0 auto; max-width: 300px; }
+.receipt-totals > div { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; }
+.receipt-totals dd { margin: 0; font-weight: 600; }
+.receipt-grand { border-top: 2px solid var(--green); font-size: 15px; font-weight: 750; padding-top: 8px !important; }
+.receipt-notes { margin-top: 18px; }
+.receipt-notes p { white-space: pre-wrap; line-height: 1.6; }
+.receipt-notes ul { margin: 0; padding-left: 18px; line-height: 1.7; }
+.receipt-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 11px; }
+.print-receipt { display: none; }
+@media print {
+  @page { margin: 12mm; }
+  body > :not(.print-receipt), dialog { display: none !important; }
+  body, .admin-layout { background: #fff; }
+  .print-receipt { display: block; }
+  .print-receipt .receipt { border: 0; padding: 0; margin: 0; }
+  .print-receipt .receipt-header { flex-direction: row; }
+  .print-receipt .receipt-meta { align-items: flex-end; text-align: right; }
+  .print-receipt .receipt-parties { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .receipt-table tr { break-inside: avoid; }
+}
 @media (max-width: 700px) {
   .public-header { flex-wrap: wrap; gap: 15px; padding-top: 20px; padding-bottom: 20px; }
   .public-nav { width: 100%; gap: 14px; flex-wrap: wrap; }
@@ -358,6 +458,21 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
   .modal-header { padding: 16px 18px; }
   .modal-body { padding: 20px 18px; }
   .job-summary { gap: 12px; }
+  .modal-wide { width: calc(100% - 20px); }
+  .three-columns { grid-template-columns: 1fr; gap: 0; }
+  .checklist-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .check-buttons button { flex: 1; }
+  .emissions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .inspection { grid-template-columns: 1fr; }
+  .inspection-car { max-height: 380px; }
+  .line-item, .line-items .line-item:has(> :nth-child(5):last-child) { grid-template-columns: 1fr 1fr; gap: 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .line-item > .field:first-child { grid-column: 1 / -1; }
+  .line-item .icon-button { justify-self: end; }
+  .card-totals { gap: 18px; }
+  .receipt { padding: 18px 14px; }
+  .receipt-header { flex-direction: column; }
+  .receipt-meta { align-items: flex-start; text-align: left; }
+  .receipt-parties { grid-template-columns: 1fr; gap: 12px; }
   .login-card { padding: 28px 23px; }
   input:not([type="checkbox"]), textarea, select { font-size: 16px; }
   .registration-input > input { font-size: 20px; }

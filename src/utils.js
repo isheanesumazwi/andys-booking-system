@@ -1,5 +1,6 @@
 export const JOB_STATUSES = ['Pending Confirmation', 'Booked', 'In Progress', 'Rescheduled', 'Completed'];
 export const PAYMENT_STATUSES = ['Unpaid', 'Paid', 'Pay Later'];
+export const WORKSHOP = { name: "Andy's Beechwood Car Care", address: '1A Warwick Rd, Newport NP19 8JJ, United Kingdom', phone: '+44 7915 392353', email: 'Andybeechwoodnp@gmail.com' };
 export const SERVICES = ['MOT', 'MOT and Service', 'Service', 'Oil and oil filter change', 'Brake pads, discs and repair', 'Starter Motor replacement', 'Alternator replacement', 'Fault Finder'];
 export const normalizeRegistration = (value) => value.toUpperCase().replace(/\s/g, '');
 export const validRegistration = (value) => /^[A-Z0-9]{2,8}$/.test(normalizeRegistration(value));
