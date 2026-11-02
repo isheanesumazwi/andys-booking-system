@@ -42,6 +42,26 @@ export function monthDays(date) {
 export const dateLabel = (date, options = { day: 'numeric', month: 'long', year: 'numeric' }) =>
   new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', options);
 export const money = (amount) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(Number(amount || 0));
+// Completed jobs show their saved copy; other jobs show who booked them.
+export function jobContact(job) {
+  const record = job.completed_record;
+  const customer = job.vehicle?.customer;
+  return {
+    name: record?.name || job.contact_name || `${customer?.first_name || ''} ${customer?.last_name || ''}`.trim(),
+    phone: record?.phone || job.contact_phone || customer?.phone || '',
+    reg_no: record?.reg_no || job.vehicle?.reg_no || '',
+    make: record?.make || job.vehicle?.make || '',
+    model: record?.model || job.vehicle?.model || '',
+  };
+}
+const dateTerms = (date) => (date ? `${date} ${dateLabel(date)} ${dateLabel(date, { day: '2-digit', month: '2-digit', year: 'numeric' })}` : '');
+// Every word typed must match, so "ford 120" or "5 nov" narrow the list.
+export function jobMatches(job, search, showCosts = false) {
+  const { name, reg_no: reg, make, model } = jobContact(job);
+  const amount = showCosts ? `${Number(job.amount_due || 0)} ${Number(job.amount_due || 0).toFixed(2)} ${money(job.amount_due)}` : '';
+  const text = `${reg} ${make} ${model} ${name} ${job.service_type || ''} ${amount} ${dateTerms(job.booking_date)} ${dateTerms(job.completed_at?.slice(0, 10) || job.job_card?.date_completed)}`.toLowerCase();
+  return search.toLowerCase().split(/\s+/).filter(Boolean).every((term) => text.includes(term));
+}
 export function validateBooking(form, { allowPast = false } = {}) {
   if (!form.first_name.trim() || !form.last_name.trim()) return 'Please enter your first and last name.';
   if (form.first_name.trim().length > 80 || form.last_name.trim().length > 80) return 'Names must be 80 characters or fewer.';
