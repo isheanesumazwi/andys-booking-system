@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { ArrowRight, MapPin, Phone, Mail } from 'lucide-react';
-import { SERVICES, WORKSHOP } from './utils.js';
+import { OPENING_HOURS, SERVICE_PACKAGES, SERVICES, WORKSHOP } from './utils.js';
 
 const address = WORKSHOP.address;
 const questions = [
-  ['How do I book?', 'Choose the work you need, enter your contact and vehicle details, and request a preferred date. Andy will contact you to confirm your appointment.'],
-  ['Is my booking confirmed straight away?', 'No. Online bookings are requests until the workshop confirms them. Please wait for confirmation before bringing your car in.'],
+  ['What are your opening times?', `We're open ${OPENING_HOURS}. Sunday appointments are by arrangement with Andy for certain jobs.`],
+  ['How do I book?', 'Choose the work you need, enter your contact, address and vehicle details, then pick a Wednesday or Thursday and a free time.'],
+  ['Is my booking confirmed straight away?', `Interim, full and major services are confirmed straight away. Other work is a request until the workshop confirms it, so please wait for confirmation before bringing your car in.`],
+  ['What do the coloured times mean?', 'Red times are booked. Amber times are waiting to be confirmed, so check again in 30 minutes as they may open up, or choose another time.'],
+  ['What is included in each service?', SERVICE_PACKAGES.map(([name, description]) => `${name}: ${description}.`).join(' ')],
+  ['Do you offer any free checks?', 'Yes. We offer a free battery check and a free suspension and safety check.'],
   ['Can I change or cancel my booking?', 'Call or email the workshop with your registration and booking date. Andy can amend or remove the booking for you.'],
   ['What if my registration is not found?', 'You can enter the make and model manually and continue booking. Some vehicles may not be available through the MOT history lookup.'],
   ['How much will the work cost?', 'Contact the workshop to discuss your vehicle and the work needed. Submitting a booking request does not provide a price quote.'],

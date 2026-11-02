@@ -1,11 +1,9 @@
-import { useState } from 'react';
-import { BadgeCheck, CarFront, Check, ChevronRight, ClipboardCheck, NotebookPen, Package, Plus, ScanSearch, Search, Stethoscope, Trash2 } from 'lucide-react';
-import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, STAGES, WHEEL_POSITIONS, cardTotals, checkSummary, jobProgress, labourCost, partCost, withLabourCost } from './jobCard.js';
-import { dateLabel, money, WORKSHOP } from './utils.js';
-
-function Field({ label, children, hint }) {
-  return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
-}
+import { useEffect, useState } from 'react';
+import { BadgeCheck, CarFront, Check, Camera, ChevronRight, ClipboardCheck, LoaderCircle, NotebookPen, Package, Plus, ScanSearch, Search, Stethoscope, Trash2 } from 'lucide-react';
+import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, JOB_PHOTO_BUCKET, WHEEL_POSITIONS, cardTotals, checkSummary, jobProgress, labourCost, partCost, withLabourCost } from './jobCard.js';
+import { dateLabel, money, slotLabel, WORKSHOP } from './utils.js';
+import { Field } from './BookingFields.jsx';
+import supabase from './supabaseClient.js';
 
 function Step({ number, title, icon: Icon, summary, children }) {
   return <details className="card-step" open>
@@ -92,6 +90,80 @@ function VehicleInspection({ damage, onChange }) {
   </div>;
 }
 
+// Phone photos are shrunk before upload. Files a browser can't decode go up unchanged.
+async function shrinkPhoto(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => { canvas.toBlob(resolve, 'image/jpeg', 0.82); });
+    return blob || file;
+  } catch { return file; }
+}
+
+const PHOTO_STAGES = [['before', 'Before'], ['after', 'After']];
+
+function InspectionPhotos({ jobId, photos, onChange }) {
+  const [urls, setUrls] = useState({});
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const paths = photos.map((photo) => photo.path).join('|');
+
+  useEffect(() => {
+    const missing = paths ? paths.split('|').filter((path) => !urls[path]) : [];
+    if (!missing.length || !supabase) return;
+    let alive = true;
+    supabase.storage.from(JOB_PHOTO_BUCKET).createSignedUrls(missing, 3600).then(({ data, error: storageError }) => {
+      if (!alive) return;
+      if (storageError) { setError(`Photos could not be loaded: ${storageError.message}`); return; }
+      setUrls((current) => ({ ...current, ...Object.fromEntries(data.filter((item) => item.signedUrl).map((item) => [item.path, item.signedUrl])) }));
+    });
+    return () => { alive = false; };
+  }, [paths, urls]);
+
+  async function upload(stage, files) {
+    setBusy(stage);
+    setError('');
+    try {
+      for (const file of files) {
+        const blob = await shrinkPhoto(file);
+        const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type.split('/')[1] || 'jpg';
+        const path = `${jobId}/${stage}/${crypto.randomUUID()}.${extension}`;
+        const { error: storageError } = await supabase.storage.from(JOB_PHOTO_BUCKET).upload(path, blob, { contentType: blob.type });
+        if (storageError) throw storageError;
+        onChange((current) => [...current, { path, stage, taken_at: new Date().toISOString() }]);
+      }
+    } catch (err) { setError(`Photo could not be uploaded: ${err.message}`); }
+    finally { setBusy(''); }
+  }
+
+  async function remove(photo) {
+    if (!window.confirm('Remove this photo permanently?')) return;
+    setError('');
+    const { error: storageError } = await supabase.storage.from(JOB_PHOTO_BUCKET).remove([photo.path]);
+    if (storageError) { setError(`Photo could not be removed: ${storageError.message}`); return; }
+    onChange((current) => current.filter((item) => item.path !== photo.path));
+  }
+
+  return <div className="inspection-photos">
+    {PHOTO_STAGES.map(([stage, label]) => {
+      const items = photos.filter((photo) => photo.stage === stage);
+      return <section key={stage}>
+        <h4>{label} photos ({items.length})</h4>
+        <div className="photo-grid">{items.map((photo) => <div className="photo-tile" key={photo.path}>
+          <a href={urls[photo.path]} target="_blank" rel="noreferrer">{urls[photo.path] ? <img src={urls[photo.path]} alt={`${label} repair`} /> : <span>Loading...</span>}</a>
+          <button type="button" className="icon-button" aria-label={`Remove ${label.toLowerCase()} photo`} onClick={() => remove(photo)}><Trash2 size={14} /></button>
+        </div>)}</div>
+        <label className={`button button-outline button-small photo-add ${busy ? 'photo-busy' : ''}`}>{busy === stage ? <LoaderCircle className="spin" size={15} aria-hidden="true" /> : <Camera size={15} />}{busy === stage ? 'Uploading...' : `Add ${label.toLowerCase()} photo`}<input type="file" accept="image/*" multiple disabled={Boolean(busy)} onChange={(e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) void upload(stage, files); }} /></label>
+      </section>;
+    })}
+    {error && <p className="notice" role="alert">{error}</p>}
+  </div>;
+}
+
 function LineItems({ caption, lines, columns, cost, blank, onChange, transform = (line) => line }) {
   const update = (index, key, value) => onChange(lines.map((line, i) => (i === index ? transform({ ...line, [key]: value }, key) : line)));
   return <div className="line-items">
@@ -108,7 +180,7 @@ function LineItems({ caption, lines, columns, cost, blank, onChange, transform =
 
 const money2 = { type: 'number', min: '0', step: '0.01', inputMode: 'decimal' };
 
-export function JobCardForm({ card, onChange }) {
+export function JobCardForm({ jobId, card, showCosts = true, onChange }) {
   const set = (key, value) => onChange((current) => ({ ...current, [key]: value }));
   const setIn = (group, key, value) => onChange((current) => ({ ...current, [group]: { ...current[group], [key]: value } }));
   const setWheel = (group) => (wheel, field, value) => onChange((current) => ({ ...current, [group]: { ...current[group], [wheel]: { ...current[group][wheel], [field]: value } } }));
@@ -144,22 +216,23 @@ export function JobCardForm({ card, onChange }) {
     </Step>
     <Step number="2" title="Digital vehicle inspection" icon={ScanSearch} summary={`${Object.keys(card.damage).length} panels marked`}>
       <VehicleInspection damage={card.damage} onChange={(damage) => set('damage', damage)} />
+      <InspectionPhotos jobId={jobId} photos={card.photos} onChange={(update) => onChange((current) => ({ ...current, photos: update(current.photos) }))} />
       <Field label="Inspection notes"><textarea rows={2} maxLength={2000} placeholder="General condition, existing damage pointed out to the customer..." value={card.inspection_notes} onChange={(e) => set('inspection_notes', e.target.value)} /></Field>
     </Step>
-    <Step number="3" title="Estimated parts & labour" icon={Package} summary={money(totals.total)}>
+    {showCosts &&     <Step number="3" title="Estimated parts & labour" icon={Package} summary={money(totals.total)}>
       <LineItems caption="Parts" lines={card.parts} cost={partCost} blank={{ description: '', part_no: '', qty: '1', unit_cost: '' }} onChange={(parts) => set('parts', parts)}
         columns={[['description', 'Part', { maxLength: 200, required: true }], ['part_no', 'Part no.', { maxLength: 60 }], ['qty', 'Qty', { type: 'number', min: '0', step: '1', inputMode: 'numeric' }], ['unit_cost', 'Unit price (£)', money2]]} />
       <LineItems caption="Labour" lines={card.labour} blank={{ description: '', hours: '', rate: '', cost: '' }} transform={withLabourCost} onChange={(labour) => set('labour', labour)}
         columns={[['description', 'Work', { maxLength: 200, required: true }], ['hours', 'Hours (optional)', { type: 'number', min: '0', step: '0.25', inputMode: 'decimal' }], ['rate', 'Rate £/hr (optional)', money2], ['cost', 'Labour cost (£)', money2]]} />
       <p className="muted small-text">Type the labour cost directly, or enter hours and a rate to work it out.</p>
       <dl className="card-totals"><div><dt>Parts</dt><dd>{money(totals.parts)}</dd></div><div><dt>Labour</dt><dd>{money(totals.labour)}</dd></div><div><dt>Total</dt><dd>{money(totals.total)}</dd></div></dl>
-    </Step>
-    <Step number="4" title="Work carried out" icon={NotebookPen}>
+    </Step>}
+    <Step number={showCosts ? 4 : 3} title="Work carried out" icon={NotebookPen}>
       <Field label="Work carried out notes"><textarea rows={4} maxLength={5000} placeholder="What was done, parts fitted, readings..." value={card.work_notes} onChange={(e) => set('work_notes', e.target.value)} /></Field>
       <Field label="Additional work required"><textarea rows={3} maxLength={3000} placeholder="One item per line" value={card.additional_work} onChange={(e) => set('additional_work', e.target.value)} /></Field>
       <Field label="Advisory & technical report"><textarea rows={3} maxLength={5000} value={card.advisory_report} onChange={(e) => set('advisory_report', e.target.value)} /></Field>
     </Step>
-    <Step number="5" title="Quality control & testing" icon={BadgeCheck} summary={card.qc_passed ? 'Passed' : 'Not signed off'}>
+    <Step number={showCosts ? 5 : 4} title="Quality control & testing" icon={BadgeCheck} summary={card.qc_passed ? 'Passed' : 'Not signed off'}>
       <ChecklistSection section={finishing} {...checklistProps} />
       <Field label="Road test & QC notes"><textarea rows={3} maxLength={3000} placeholder="Road test findings, warning lights, leaks..." value={card.qc_notes} onChange={(e) => set('qc_notes', e.target.value)} /></Field>
       <div className="three-columns">
@@ -189,9 +262,9 @@ export function Receipt({ jobId, details, card, issued }) {
       <div className="receipt-meta"><strong>RECEIPT</strong><span>No. {jobId}</span><span>Issued {dateLabel(issued)}</span></div>
     </header>
     <section className="receipt-parties">
-      <div><h3>Customer</h3><p>{details.first_name} {details.last_name}</p><p>{details.phone}</p></div>
+      <div><h3>Customer</h3><p>{details.first_name} {details.last_name}</p><p>{details.phone}</p>{details.customer_address && <p className="receipt-address">{details.customer_address}</p>}{details.customer_postcode && <p>{details.customer_postcode}</p>}</div>
       <div><h3>Vehicle</h3><p><strong>{details.reg_no}</strong></p><p>{details.make} {details.model}{details.year ? ` (${details.year})` : ''}</p>{card.mileage && <p>Mileage: {card.mileage}</p>}</div>
-      <div><h3>Service dates</h3><p>Booked: {date(details.booking_date)}</p><p>Date in: {date(card.date_in || details.booking_date)}</p><p>Completed: {date(card.date_completed)}</p></div>
+      <div><h3>Service dates</h3><p>Booked: {date(details.booking_date)}{details.booking_time ? ` at ${slotLabel(details.booking_time)}` : ''}</p><p>Date in: {date(card.date_in || details.booking_date)}</p><p>Completed: {date(card.date_completed)}</p></div>
     </section>
     {details.service_type && <p className="receipt-service"><strong>Service:</strong> {details.service_type}</p>}
     <table className="receipt-table">
@@ -218,7 +291,7 @@ export function Receipt({ jobId, details, card, issued }) {
 
 const BOARD_FILTERS = [['active', 'In the workshop'], ['completed', 'Completed'], ['all', 'All jobs']];
 
-export function JobCardsBoard({ jobs, loading, authorized, onOpen }) {
+export function JobCardsBoard({ jobs, loading, authorized, showCosts = true, onOpen }) {
   const [filter, setFilter] = useState('active');
   const [search, setSearch] = useState('');
   const term = search.toLowerCase().trim();
@@ -226,7 +299,7 @@ export function JobCardsBoard({ jobs, loading, authorized, onOpen }) {
     .filter((job) => job.status !== 'Pending Confirmation')
     .filter((job) => filter === 'all' || (filter === 'completed' ? job.status === 'Completed' : job.status !== 'Completed'))
     .filter((job) => `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(term))
-    .map((job) => ({ job, progress: jobProgress(job) }));
+    .map((job) => ({ job, progress: jobProgress(job, showCosts) }));
   if (filter !== 'active') listed.reverse();
   return <section className="agenda-panel job-board">
     <div className="agenda-heading">
@@ -238,8 +311,8 @@ export function JobCardsBoard({ jobs, loading, authorized, onOpen }) {
       <div className="board-grid">{listed.map(({ job, progress }) => <button type="button" key={job.id} className="board-card" onClick={() => onOpen(job)} aria-label={`Open job card for ${job.vehicle?.reg_no}`}>
         <div className="board-card-top"><strong className="registration">{job.vehicle?.reg_no}</strong><span className={`status status-${job.status.toLowerCase().replaceAll(' ', '-')}`}><span />{job.status}</span></div>
         <div className="board-card-vehicle"><CarFront size={16} /><div><strong>{job.vehicle?.make} {job.vehicle?.model}</strong><span>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name} · {dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>{job.service_type && <span>{job.service_type}</span>}</div></div>
-        <ol className="stage-track" aria-label={`${progress.completed} of ${STAGES.length} stages complete`}>{STAGES.map(([key, label]) => <li key={key} className={progress.done[key] ? 'stage-done' : ''}><span />{label}</li>)}</ol>
-        <div className="board-card-footer"><span className={progress.next ? 'next-step' : 'next-step next-done'}>{progress.next ? `Next: ${progress.next}` : 'All stages complete'}</span><strong>{money(cardTotals(progress.card).total)}</strong><ChevronRight size={16} /></div>
+        <ol className="stage-track" style={{ gridTemplateColumns: `repeat(${progress.stages.length}, minmax(0, 1fr))` }} aria-label={`${progress.completed} of ${progress.stages.length} stages complete`}>{progress.stages.map(([key, label]) => <li key={key} className={progress.done[key] ? 'stage-done' : ''}><span />{label}</li>)}</ol>
+        <div className="board-card-footer"><span className={progress.next ? 'next-step' : 'next-step next-done'}>{progress.next ? `Next: ${progress.next}` : 'All stages complete'}</span>{showCosts && <strong>{money(cardTotals(progress.card).total)}</strong>}<ChevronRight size={16} /></div>
       </button>)}</div>}
     <div className="agenda-footer"><span>{listed.length} {listed.length === 1 ? 'job card' : 'job cards'}</span></div>
   </section>;
