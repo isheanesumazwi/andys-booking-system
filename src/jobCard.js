@@ -1,5 +1,6 @@
 export const CHECK_RESULTS = [['ok', 'OK'], ['advisory', 'Advisory'], ['repair', 'Repair reqd']];
 export const WHEEL_POSITIONS = [['osf', 'O/S F'], ['nsf', 'N/S F'], ['osr', 'O/S R'], ['nsr', 'N/S R'], ['spare', 'Spare']];
+export const JOB_PHOTO_BUCKET = 'job-photos';
 export const DAMAGE_TYPES = ['Scratch', 'Dent', 'Chip', 'Crack', 'Scuff', 'Rust', 'Missing'];
 
 // Numbering and wording follow the workshop's paper service checklist.
@@ -74,7 +75,7 @@ export const emptyCard = () => ({
   tyres: wheels(['condition', 'pressure', 'tread']), tyre_size: '', torque: '', tyre_kit_expiry: '', tyres_replace: false,
   brakes: wheels(['pads', 'discs']), brake_fluid_replace: false,
   emissions: { fuel: '', hc: '', co: '', co2: '', o2: '', lambda: '', km: '' },
-  damage: {}, inspection_notes: '',
+  damage: {}, inspection_notes: '', photos: [],
   parts: [], labour: [],
   work_notes: '', additional_work: '', advisory_report: '',
   qc_notes: '', qc_passed: false, technician: '', date_in: '', date_completed: '', photo_taken: false, photo_shared: false,
@@ -91,6 +92,7 @@ export function normalizeCard(raw) {
   for (const key of ['tyres', 'brakes']) {
     merged[key] = Object.fromEntries(WHEEL_POSITIONS.map(([wheel]) => [wheel, { ...base[key][wheel], ...object(object(card[key])[wheel]) }]));
   }
+  merged.photos = Array.isArray(card.photos) ? card.photos.filter((photo) => object(photo).path) : [];
   merged.parts = Array.isArray(card.parts) ? card.parts.map((part) => ({ description: '', part_no: '', qty: '1', unit_cost: '', ...object(part) })) : [];
   merged.labour = Array.isArray(card.labour) ? card.labour.map((line) => ({ description: '', hours: '', rate: '', cost: '', ...object(line) })) : [];
   return merged;
@@ -128,7 +130,7 @@ export const STAGES = [
   ['paid', 'Paid', 'Take payment'],
 ];
 
-export function jobProgress(job) {
+export function jobProgress(job, showCosts = true) {
   const card = normalizeCard(job.job_card);
   const done = {
     checked: Object.values(card.checks).some(Boolean) || Boolean(card.diagnosis.trim()),
@@ -137,6 +139,7 @@ export function jobProgress(job) {
     qc: card.qc_passed,
     paid: job.payment_status === 'Paid',
   };
-  const next = STAGES.find(([key]) => !done[key]);
-  return { card, done, completed: STAGES.filter(([key]) => done[key]).length, next: next ? next[2] : null };
+  const stages = showCosts ? STAGES : STAGES.filter(([key]) => key !== 'priced' && key !== 'paid');
+  const next = stages.find(([key]) => !done[key]);
+  return { card, done, stages, completed: stages.filter(([key]) => done[key]).length, next: next ? next[2] : null };
 }

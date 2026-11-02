@@ -1,8 +1,22 @@
 export const JOB_STATUSES = ['Pending Confirmation', 'Booked', 'In Progress', 'Rescheduled', 'Completed'];
 export const PAYMENT_STATUSES = ['Unpaid', 'Paid', 'Pay Later'];
 export const WORKSHOP = { name: "Andy's Beechwood Car Care", address: '1A Warwick Rd, Newport NP19 8JJ, United Kingdom', phone: '+44 7915 392353', email: 'Andybeechwoodnp@gmail.com' };
-export const SERVICES = ['MOT', 'MOT and Service', 'Service', 'Oil and oil filter change', 'Brake pads, discs and repair', 'Starter Motor replacement', 'Alternator replacement', 'Fault Finder'];
+export const SERVICE_PACKAGES = [
+  ['Interim service', 'Oil and oil filter change'],
+  ['Full service', 'Oil, oil and air filter change, plus a top-up of brake fluid and coolant if needed'],
+  ['Major service', 'Oil, oil and air filter change, brake fluid and coolant flushed and replaced, and a new pollen filter'],
+];
+export const isAutoConfirmed = (service) => SERVICE_PACKAGES.some(([name]) => name.toLowerCase() === service.trim().toLowerCase());
+export const BOOKING_SLOTS = ['10:30', '11:30', '12:30', '13:30', '14:30', '15:30', '16:30'];
+export const slotLabel = (slot) => { const hour = Number(slot.slice(0, 2)); return `${hour > 12 ? hour - 12 : hour}:${slot.slice(3, 5)}${hour >= 12 ? 'pm' : 'am'}`; };
+export const OPENING_HOURS = 'Wednesdays and Thursdays, 10:30am to 5:30pm';
+export const SERVICES = [...SERVICE_PACKAGES.map(([name]) => name), 'MOT', 'MOT and Service', 'Service', 'Brake pads, discs and repair', 'Starter Motor replacement', 'Alternator replacement', 'Fault Finder'];
 export const normalizeRegistration = (value) => value.toUpperCase().replace(/\s/g, '');
+export const normalizePostcode = (value) => {
+  const compact = value.toUpperCase().replace(/\s/g, '');
+  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
+};
+export const validPostcode = (value) => /^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(normalizePostcode(value));
 export const validRegistration = (value) => /^[A-Z0-9]{2,8}$/.test(normalizeRegistration(value));
 export const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export const addDays = (date, days) => {
@@ -10,6 +24,10 @@ export const addDays = (date, days) => {
   result.setDate(result.getDate() + days);
   return localDate(result);
 };
+// Online booking days. Sundays are arranged by the workshop after confirming a job.
+export function bookingDates(from = localDate(), weeks = 8) {
+  return Array.from({ length: weeks * 7 }, (_, i) => addDays(from, i)).filter((day) => [3, 4].includes(new Date(`${day}T12:00:00`).getDay()));
+}
 export const addMonths = (date, months) => {
   const result = new Date(`${date.slice(0, 7)}-01T12:00:00`);
   result.setMonth(result.getMonth() + months);
