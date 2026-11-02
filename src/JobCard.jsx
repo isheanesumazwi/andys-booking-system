@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BadgeCheck, CarFront, Check, Camera, ChevronRight, ClipboardCheck, LoaderCircle, NotebookPen, Package, Plus, ScanSearch, Search, Stethoscope, Trash2 } from 'lucide-react';
 import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, JOB_PHOTO_BUCKET, WHEEL_POSITIONS, cardTotals, checkSummary, jobProgress, labourCost, partCost, withLabourCost } from './jobCard.js';
-import { dateLabel, money, slotLabel, WORKSHOP } from './utils.js';
+import { dateLabel, jobContact, jobMatches, money, slotLabel, WORKSHOP } from './utils.js';
 import { Field } from './BookingFields.jsx';
 import supabase from './supabaseClient.js';
 
@@ -298,7 +298,7 @@ export function JobCardsBoard({ jobs, loading, authorized, showCosts = true, onO
   const listed = jobs
     .filter((job) => job.status !== 'Pending Confirmation')
     .filter((job) => filter === 'all' || (filter === 'completed' ? job.status === 'Completed' : job.status !== 'Completed'))
-    .filter((job) => `${job.vehicle?.reg_no} ${job.vehicle?.make} ${job.vehicle?.model} ${job.vehicle?.customer?.first_name} ${job.vehicle?.customer?.last_name} ${job.service_type || ''}`.toLowerCase().includes(term))
+    .filter((job) => jobMatches(job, term, showCosts))
     .map((job) => ({ job, progress: jobProgress(job, showCosts) }));
   if (filter !== 'active') listed.reverse();
   return <section className="agenda-panel job-board">
@@ -310,7 +310,7 @@ export function JobCardsBoard({ jobs, loading, authorized, showCosts = true, onO
     {loading ? <div className="empty-state"><h3>Loading job cards...</h3></div> : !authorized ? <div className="empty-state"><h3>Workshop connection required</h3></div> : listed.length === 0 ? <div className="empty-state"><ClipboardCheck size={34} /><h3>{search ? 'No matching job cards.' : 'No job cards here.'}</h3><p>{filter === 'active' ? 'Approved bookings appear here ready for their job card.' : 'Try another filter.'}</p></div> :
       <div className="board-grid">{listed.map(({ job, progress }) => <button type="button" key={job.id} className="board-card" onClick={() => onOpen(job)} aria-label={`Open job card for ${job.vehicle?.reg_no}`}>
         <div className="board-card-top"><strong className="registration">{job.vehicle?.reg_no}</strong><span className={`status status-${job.status.toLowerCase().replaceAll(' ', '-')}`}><span />{job.status}</span></div>
-        <div className="board-card-vehicle"><CarFront size={16} /><div><strong>{job.vehicle?.make} {job.vehicle?.model}</strong><span>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name} · {dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>{job.service_type && <span>{job.service_type}</span>}</div></div>
+        <div className="board-card-vehicle"><CarFront size={16} /><div><strong>{job.vehicle?.make} {job.vehicle?.model}</strong><span>{jobContact(job).name} · {dateLabel(job.booking_date, { day: 'numeric', month: 'short', year: 'numeric' })}</span>{job.service_type && <span>{job.service_type}</span>}</div></div>
         <ol className="stage-track" style={{ gridTemplateColumns: `repeat(${progress.stages.length}, minmax(0, 1fr))` }} aria-label={`${progress.completed} of ${progress.stages.length} stages complete`}>{progress.stages.map(([key, label]) => <li key={key} className={progress.done[key] ? 'stage-done' : ''}><span />{label}</li>)}</ol>
         <div className="board-card-footer"><span className={progress.next ? 'next-step' : 'next-step next-done'}>{progress.next ? `Next: ${progress.next}` : 'All stages complete'}</span>{showCosts && <strong>{money(cardTotals(progress.card).total)}</strong>}<ChevronRight size={16} /></div>
       </button>)}</div>}

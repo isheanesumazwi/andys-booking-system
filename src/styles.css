@@ -417,6 +417,19 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
 .permission-guide dt { font-size: 12px; font-weight: 650; }
 .permission-guide dd { margin: 3px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .sidebar-bottom button + button { margin-left: 6px; }
+.contact-flag { margin: 6px 0 12px; padding: 8px 10px; border-radius: 6px; background: #fdf6e1; color: #8a6a1c; font-size: 11px; line-height: 1.5; }
+.contact-flag a { text-decoration: underline; }
+.already-booked { border: 1px solid #e6c766; background: #fdf6e1; border-radius: 8px; padding: 14px; color: #6e5416; font-size: 12px; line-height: 1.6; }
+.already-booked p { margin: 4px 0 12px; }
+.already-booked div { display: flex; flex-wrap: wrap; gap: 8px; }
+.day-markers { display: flex !important; justify-content: center; gap: 4px; min-height: 22px; }
+.day-markers b { display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; }
+.marker-booked { background: #3f8f4f; }
+.marker-pending { background: #e08a1e; }
+.calendar-legend { margin-top: 12px; }
+.calendar-legend + p { margin-top: 6px; }
+.legend-day-booked::before { background: #3f8f4f; border-radius: 50%; }
+.legend-day-pending::before { background: #e08a1e; border-radius: 50%; }
 .qc-checks { display: flex; flex-direction: column; gap: 4px; }
 .receipt-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .receipt { border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin-top: 16px; font-size: 12px; color: #1f2d24; background: #fff; }
