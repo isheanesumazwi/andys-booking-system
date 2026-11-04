@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, KeyRound, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
-import { addDays, BOOKING_SLOTS, dateLabel, JOB_STATUSES, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, validPostcode, validRegistration, validateBooking } from './utils.js';
+import { addDays, BOOKING_SLOTS, dateLabel, isAutoConfirmed, JOB_STATUSES, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, validEmail, validPostcode, validRegistration, validateBooking } from './utils.js';
 import { cardTotals, JOB_PHOTO_BUCKET, normalizeCard } from './jobCard.js';
 import AdminCentre, { ChangePassword } from './AdminCentre.jsx';
 import { AddressFields, Field, SlotPicker } from './BookingFields.jsx';
@@ -11,7 +11,7 @@ import { JobCardForm, JobCardsBoard, Receipt } from './JobCard.jsx';
 import PhotoCarousel from './PhotoCarousel.jsx';
 import MonthCalendar, { DayMarkers } from './MonthCalendar.jsx';
 
-const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', booking_time: '', service_type: '', customer_postcode: '', address_line1: '', address_line2: '', address_town: '' };
+const emptyBooking = { first_name: '', last_name: '', phone: '', reg_no: '', make: '', model: '', year: '', engine_capacity: '', booking_date: '', booking_time: '', service_type: '', customer_postcode: '', address_line1: '', address_line2: '', address_town: '', email: '' };
 
 function Notice({ children, success = false }) {
   return children ? <div className={`notice ${success ? 'notice-success' : ''}`} role={success ? 'status' : 'alert'}>{children}</div> : null;
@@ -33,6 +33,16 @@ function ServicePicker({ value, onChange, required = false }) {
   </div>;
 }
 
+const BOOKING_STEPS = [
+  ['Service', 'What can we help with?', 'Pick a service, or tell us in your own words.'],
+  ['Your car', 'Which car is it?', "Enter your registration and we'll find the rest."],
+  ['Your details', 'Your details', 'So Andy can confirm your booking.'],
+  ['Address', 'Your address', 'Start with your postcode.'],
+  ['Date and time', 'Pick a day and time', 'Choose whatever suits you best.'],
+  ['Check and book', 'Check and book', 'Make sure everything looks right.'],
+];
+const LAST_STEP = BOOKING_STEPS.length - 1;
+
 function BookingForm({ admin = false, onCreated }) {
   const [form, setForm] = useState(() => {
     const service = new URLSearchParams(window.location.search).get('service');
@@ -41,12 +51,19 @@ function BookingForm({ admin = false, onCreated }) {
   const [lookup, setLookup] = useState({ state: 'idle', message: '' });
   const [retry, setRetry] = useState(0);
   const [confirmed, setConfirmed] = useState(false);
+  const [editVehicle, setEditVehicle] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState('');
   const [slotRefresh, setSlotRefresh] = useState(0);
   const [alreadyBooked, setAlreadyBooked] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [step, setStep] = useState(0);
+  const [back, setBack] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
+  const formRef = useRef(null);
+  const headingRef = useRef(null);
+  const moved = useRef(false);
   const registration = normalizeRegistration(form.reg_no);
 
   useEffect(() => {
@@ -65,7 +82,7 @@ function BookingForm({ admin = false, onCreated }) {
         if (!response.ok) throw new Error(data.error || 'Vehicle lookup is unavailable. Please enter your vehicle details manually.');
         if (controller.signal.aborted) return;
         setForm((current) => ({ ...current, make: data.make, model: data.model, year: data.year || '', engine_capacity: data.engine_capacity || '' }));
-        setLookup({ state: 'found', message: `We found your ${data.make} ${data.model} ${data.year}.` });
+        setLookup({ state: 'found', message: '' });
       } catch (err) {
         if (controller.signal.aborted) return;
         setLookup({ state: 'failed', message: err.message });
@@ -74,26 +91,68 @@ function BookingForm({ admin = false, onCreated }) {
     return () => { clearTimeout(timer); controller.abort(); };
   }, [registration, retry]);
 
+  // Each new step takes focus. The form scrolls back to the top if it is out of view, and always on phones.
+  useEffect(() => {
+    if (!moved.current) return;
+    headingRef.current?.focus({ preventScroll: true });
+    const top = formRef.current?.getBoundingClientRect().top ?? 0;
+    if (top < 0 || (window.innerWidth <= 850 && top > 80)) {
+      formRef.current.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    }
+  }, [step]);
+
   function change(key, value) {
     setError('');
+    setAlreadyBooked(false);
     setForm((current) => ({ ...current, [key]: value, ...(key === 'reg_no' ? { make: '', model: '', year: '', engine_capacity: '' } : {}) }));
+    if (key === 'reg_no') setEditVehicle(false);
     if (key === 'make' || key === 'model') {
-      setLookup((current) => current.state === 'found' ? { state: 'manual', message: 'Using your manually corrected vehicle details.' } : current);
+      setLookup((current) => current.state === 'found' ? { state: 'manual', message: 'Using your corrected vehicle details.' } : current);
       setConfirmed(false);
     }
   }
 
-  const chooseDate = (day) => { setError(''); setForm((current) => ({ ...current, booking_date: day, booking_time: '' })); };
-  const chooseTime = useCallback((slot) => { setError(''); setForm((current) => ({ ...current, booking_time: slot })); }, []);
+  const chooseDate = (day) => { setError(''); setAlreadyBooked(false); setForm((current) => ({ ...current, booking_date: day, booking_time: '' })); };
+  const chooseTime = useCallback((slot) => { setError(''); setAlreadyBooked(false); setForm((current) => ({ ...current, booking_time: slot })); }, []);
 
-  async function submit(event, changeRequest = false) {
-    event?.preventDefault();
+  function stepError(index) {
+    if (index === 0 && !validService(form.service_type)) return 'Please tell us what work you need.';
+    if (index === 1) {
+      if (!validRegistration(registration)) return 'Please enter a registration with 2-8 letters or numbers.';
+      if (lookup.state === 'waiting' || lookup.state === 'loading') return "Just a moment, we're still looking up your car.";
+      if (!form.make.trim() || !form.model.trim()) return 'Please enter the make and model of your car.';
+      if (lookup.state === 'found' && !confirmed) return 'Please confirm this is your car.';
+    }
+    if (index === 2) {
+      if (!form.first_name.trim() || !form.last_name.trim()) return 'Please enter your first and last name.';
+      if (!/^\+?[\d ()-]{7,25}$/.test(form.phone) || form.phone.replace(/\D/g, '').length < 7) return 'Please enter a valid phone number.';
+      if ((form.email.trim() || !admin) && !validEmail(form.email)) return 'Please enter a valid email address.';
+    }
+    if (index === 3 && (!form.address_line1.trim() || !form.address_town.trim() || !validPostcode(form.customer_postcode))) return 'Please enter your full address and postcode.';
+    if (index === 4 && !form.booking_date) return 'Please choose a day.';
+    if (index === 4 && !form.booking_time) return 'Please choose a time.';
+    return '';
+  }
+
+  function go(next) {
+    moved.current = true;
+    setError('');
+    setBack(next < step);
+    setStep(next);
+    if (next === LAST_STEP) setReviewed(true);
+  }
+
+  function advance() {
+    const problem = stepError(step);
+    if (problem) { setError(problem); return; }
+    go(reviewed ? LAST_STEP : step + 1);
+  }
+
+  async function submit(changeRequest = false) {
+    const incomplete = BOOKING_STEPS.findIndex((_, index) => stepError(index));
+    if (incomplete !== -1) { go(incomplete); setError(stepError(incomplete)); return; }
     const validation = validateBooking(form);
     if (validation) { setError(validation); return; }
-    if (!validService(form.service_type)) { setError('Please tell us what work you need.'); return; }
-    if (!form.address_line1.trim() || !form.address_town.trim() || !validPostcode(form.customer_postcode)) { setError('Please enter your full address and postcode.'); return; }
-    if (!form.booking_time) { setError('Please choose a time.'); return; }
-    if (lookup.state === 'found' && !confirmed) { setError('Please confirm that the vehicle details are correct.'); return; }
     if (configurationError) { setError(configurationError); return; }
     setBusy(true);
     setError('');
@@ -102,6 +161,7 @@ function BookingForm({ admin = false, onCreated }) {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         phone: form.phone.trim(),
+        email: form.email.trim(),
         reg_no: registration,
         make: form.make.trim(),
         model: form.model.trim(),
@@ -126,47 +186,89 @@ function BookingForm({ admin = false, onCreated }) {
     } finally { setBusy(false); }
   }
 
-  if (sent) return <div className="booking-success">
+  function startAgain() {
+    moved.current = false;
+    setSent('');
+    setForm({ ...emptyBooking });
+    setStep(0);
+    setReviewed(false);
+  }
+
+  if (sent) return <div className="booking-success wizard-step">
     <span className="success-icon"><CheckCircle2 size={38} /></span>
     <p className="eyebrow">ALL SET</p>
     <h2>{admin ? 'Booking added.' : sent === 'Booked' ? "You're booked in." : 'Request received.'}</h2>
     <p>{admin ? 'The vehicle is now on your workshop agenda.' : sent === 'Booked' ? `Your ${form.service_type.trim()} is confirmed. See you then!` : changing ? 'Your change request has been sent. Andy will review it, and your existing booking stays in place until then.' : 'Booking request sent! Andy will review your request shortly.'}</p>
     <div className="confirmation-details"><strong className="registration">{registration}</strong><span>{dateLabel(form.booking_date)} at {slotLabel(form.booking_time)}</span></div>
     {!admin && sent !== 'Booked' && <p className="muted">This is a request, not a confirmed appointment. Andy will contact you on the phone number you provided.</p>}
-    <button className="button button-outline" onClick={() => { setSent(''); setForm({ ...emptyBooking }); }}>Make another booking <ArrowRight size={16} /></button>
+    <button className="button button-outline" onClick={startAgain}>Make another booking <ArrowRight size={16} /></button>
   </div>;
 
-  return <form onSubmit={submit} className="booking-form">
-    <fieldset disabled={busy}>
-      <ServicePicker required value={form.service_type} onChange={(value) => change('service_type', value)} />
-      <div className="form-section-label"><span>01</span> YOUR DETAILS</div>
-      <div className="two-columns">
-        <Field label="First name"><input autoComplete="given-name" required maxLength={80} placeholder="e.g. James" value={form.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field>
-        <Field label="Last name"><input autoComplete="family-name" required maxLength={80} placeholder="e.g. Taylor" value={form.last_name} onChange={(e) => change('last_name', e.target.value)} /></Field>
-      </div>
-      <Field label="Phone number" hint="We'll use this to confirm your booking."><input type="tel" autoComplete="tel" required maxLength={25} placeholder="e.g. 07700 900123" value={form.phone} onChange={(e) => change('phone', e.target.value)} /></Field>
-      <div className="form-section-label"><span>02</span> YOUR ADDRESS</div>
-      <AddressFields form={form} onChange={(patch) => { setError(''); setForm((current) => ({ ...current, ...patch })); }} />
-      <div className="form-section-label"><span>03</span> YOUR VEHICLE</div>
-      <Field label="Vehicle registration">
-        <div className="registration-input"><span>UK</span><input required maxLength={10} autoCapitalize="characters" spellCheck={false} placeholder="AB12 CDE" value={form.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /><button type="button" aria-label="Look up vehicle registration" title="Look up vehicle" disabled={!validRegistration(registration) || lookup.state === 'loading'} onClick={() => setRetry((value) => value + 1)}>{lookup.state === 'loading' ? <Spinner /> : <Search size={19} />}</button></div>
-      </Field>
-      {lookup.state === 'loading' && <p className="lookup-status" role="status">Looking up your vehicle...</p>}
-      {lookup.message && <div className={`lookup-status ${lookup.state === 'found' ? 'lookup-found' : ''}`} role="status">{lookup.state === 'found' && <CheckCircle2 size={17} />} {lookup.message}</div>}
-      {lookup.state === 'found' && <label className="check-label"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Yes, this is my vehicle</label>}
-      <div className="two-columns">
-        <Field label="Make"><input required maxLength={100} placeholder="e.g. Ford" value={form.make} onChange={(e) => change('make', e.target.value)} /></Field>
-        <Field label="Model"><input required maxLength={100} placeholder="e.g. Focus" value={form.model} onChange={(e) => change('model', e.target.value)} /></Field>
-      </div>
-      {admin && <div className="two-columns">
-        <Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={form.year} onChange={(e) => change('year', e.target.value)} /></Field>
-        <Field label="Engine capacity (optional)"><input maxLength={50} placeholder="e.g. 1598 cc" value={form.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field>
-      </div>}
-      <div className="form-section-label"><span>04</span> DATE AND TIME</div>
-      <SlotPicker admin={admin} date={form.booking_date} time={form.booking_time} refresh={slotRefresh} onDate={chooseDate} onTime={chooseTime} />
+  const [, title, subtitle] = BOOKING_STEPS[step];
+  const showVehicleFields = admin || editVehicle || lookup.state === 'failed' || lookup.state === 'manual';
+  const address = [form.address_line1, form.address_line2, form.address_town, normalizePostcode(form.customer_postcode)].map((line) => line.trim()).filter(Boolean).join(', ');
+  const summary = [
+    ['Service', [form.service_type.trim()]],
+    ['Car', [`${registration} · ${form.make.trim()} ${form.model.trim()}`, [form.year, form.engine_capacity].filter(Boolean).join(' · ')]],
+    ['Your details', [`${form.first_name.trim()} ${form.last_name.trim()}`, form.phone.trim(), form.email.trim()]],
+    ['Address', [address]],
+    ['Date and time', [form.booking_date && form.booking_time ? `${dateLabel(form.booking_date, { weekday: 'long', day: 'numeric', month: 'long' })} at ${slotLabel(form.booking_time)}` : '']],
+  ];
+
+  return <form ref={formRef} noValidate onSubmit={(event) => { event.preventDefault(); if (step < LAST_STEP) advance(); else void submit(); }} className="booking-form wizard">
+    <div className="wizard-progress">
+      <p><span>Step {step + 1} of {BOOKING_STEPS.length}</span>{BOOKING_STEPS[step][0]}</p>
+      <ol aria-hidden="true">{BOOKING_STEPS.map(([name], index) => <li key={name} className={index < step ? 'step-done' : index === step ? 'step-current' : ''} />)}</ol>
+    </div>
+    <fieldset disabled={busy} key={step} className={`wizard-step ${back ? 'wizard-back' : ''}`}>
+      <legend className="wizard-heading"><h3 ref={headingRef} tabIndex={-1}>{title}</h3><p>{admin && step === 4 ? 'Any day can be used for workshop bookings.' : subtitle}</p></legend>
+      {step === 0 && <ServicePicker required value={form.service_type} onChange={(value) => change('service_type', value)} />}
+      {step === 1 && <>
+        <Field label="Vehicle registration">
+          <div className="registration-input"><span>UK</span><input required maxLength={10} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="AB12 CDE" value={form.reg_no} onChange={(e) => change('reg_no', e.target.value.toUpperCase())} /><button type="button" aria-label="Look up vehicle registration" title="Look up vehicle" disabled={!validRegistration(registration) || lookup.state === 'loading'} onClick={() => setRetry((value) => value + 1)}>{lookup.state === 'loading' ? <Spinner /> : <Search size={19} />}</button></div>
+        </Field>
+        {(lookup.state === 'loading' || lookup.state === 'waiting') && <p className="lookup-status" role="status"><Spinner /> Looking up your car...</p>}
+        {lookup.message && <p className="lookup-status" role="status">{lookup.message}</p>}
+        {lookup.state === 'found' && !editVehicle && <div className="vehicle-found">
+          <span className="small-icon"><CarFront size={22} /></span>
+          <div><small>We found your car</small><strong>{form.make} {form.model}</strong>{(form.year || form.engine_capacity) && <span>{[form.year, form.engine_capacity].filter(Boolean).join(' · ')}</span>}</div>
+          <label className="confirm-toggle"><input type="checkbox" checked={confirmed} onChange={(e) => { setError(''); setConfirmed(e.target.checked); }} /> Yes, this is my car</label>
+          <button type="button" className="text-button" onClick={() => setEditVehicle(true)}>Not right? Edit the details</button>
+        </div>}
+        {showVehicleFields && <div className="two-columns">
+          <Field label="Make"><input required maxLength={100} placeholder="e.g. Ford" value={form.make} onChange={(e) => change('make', e.target.value)} /></Field>
+          <Field label="Model"><input required maxLength={100} placeholder="e.g. Focus" value={form.model} onChange={(e) => change('model', e.target.value)} /></Field>
+        </div>}
+        {admin && <div className="two-columns">
+          <Field label="Year (optional)"><input type="number" inputMode="numeric" min={1886} max={new Date().getFullYear() + 1} value={form.year} onChange={(e) => change('year', e.target.value)} /></Field>
+          <Field label="Engine capacity (optional)"><input maxLength={50} placeholder="e.g. 1598 cc" value={form.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field>
+        </div>}
+      </>}
+      {step === 2 && <>
+        <div className="two-columns">
+          <Field label="First name"><input autoComplete="given-name" required maxLength={80} placeholder="e.g. James" value={form.first_name} onChange={(e) => change('first_name', e.target.value)} /></Field>
+          <Field label="Last name"><input autoComplete="family-name" required maxLength={80} placeholder="e.g. Taylor" value={form.last_name} onChange={(e) => change('last_name', e.target.value)} /></Field>
+        </div>
+        <Field label="Phone number" hint="We'll use this to confirm your booking."><input type="tel" inputMode="tel" autoComplete="tel" required maxLength={25} placeholder="e.g. 07700 900123" value={form.phone} onChange={(e) => change('phone', e.target.value)} /></Field>
+        <Field label={admin ? 'Email (optional)' : 'Email'}><input type="email" inputMode="email" autoComplete="email" autoCapitalize="off" spellCheck={false} required={!admin} maxLength={254} placeholder="e.g. james@example.com" value={form.email} onChange={(e) => change('email', e.target.value)} /></Field>
+      </>}
+      {step === 3 && <AddressFields form={form} onChange={(patch) => { setError(''); setForm((current) => ({ ...current, ...patch })); }} />}
+      {step === 4 && <SlotPicker admin={admin} date={form.booking_date} time={form.booking_time} refresh={slotRefresh} onDate={chooseDate} onTime={chooseTime} />}
+      {step === LAST_STEP && <>
+        <dl className="review-list">{summary.map(([label, lines], index) => <div key={label}>
+          <dt>{label}</dt>
+          <dd>{lines.filter(Boolean).map((line) => <span key={line}>{line}</span>)}</dd>
+          <button type="button" className="text-button" aria-label={`Change ${label.toLowerCase()}`} onClick={() => go(index)}>Change</button>
+        </div>)}</dl>
+        {!admin && <p className="review-note">{isAutoConfirmed(form.service_type) ? `Your ${form.service_type.trim().toLowerCase()} will be confirmed straight away.` : "This is a request until Andy confirms it. He'll contact you on the number you gave."}</p>}
+      </>}
     </fieldset>
     <Notice>{error}</Notice>
-    {alreadyBooked ? <div className="already-booked" role="alert"><strong>This car is already booked in with us.</strong><p>Do you want to change that booking to the day and time you've chosen?</p><div><button type="button" className="button button-primary" disabled={busy} onClick={() => submit(null, true)}>{busy ? <Spinner /> : <Check size={16} />} Yes, change my booking</button><button type="button" className="button button-outline" disabled={busy} onClick={() => setAlreadyBooked(false)}>No, keep it</button></div></div> : <button className="button button-primary button-wide" disabled={busy || lookup.state === 'loading' || lookup.state === 'waiting'}>{busy ? <Spinner /> : <CalendarDays size={18} />}{busy ? 'Saving booking...' : admin ? 'Add booking' : 'Request a booking'}{!busy && <ArrowRight size={18} />}</button>}
+    {alreadyBooked && <div className="already-booked" role="alert"><strong>This car is already booked in with us.</strong><p>Do you want to change that booking to the day and time you've chosen?</p><div><button type="button" className="button button-primary" disabled={busy} onClick={() => { void submit(true); }}>{busy ? <Spinner /> : <Check size={16} />} Yes, change my booking</button><button type="button" className="button button-outline" disabled={busy} onClick={() => setAlreadyBooked(false)}>No, keep it</button></div></div>}
+    <div className="wizard-footer">
+      {step > 0 && <button type="button" className="button button-outline wizard-back-button" disabled={busy} onClick={() => go(step - 1)}><ChevronLeft size={18} /> Back</button>}
+      {!alreadyBooked && <button className="button button-primary wizard-next" disabled={busy}>{busy ? <><Spinner /> Saving booking...</> : step < LAST_STEP ? <>{reviewed ? 'Back to summary' : 'Continue'} <ArrowRight size={18} /></> : <><CalendarDays size={18} /> {admin ? 'Add booking' : isAutoConfirmed(form.service_type) ? 'Book now' : 'Request a booking'}</>}</button>}
+    </div>
     {!admin && <p className="form-footer"><ShieldCheck size={14} /> Your details are only used to manage your booking.</p>}
   </form>;
 }
@@ -345,6 +447,7 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
   return <Modal title="Job record" onClose={close} className="modal-wide">
     <div className="job-summary"><strong className="registration">{vehicle?.reg_no || 'No registration'}</strong><div><h3>{vehicle?.make} {vehicle?.model}</h3><p>{customer?.first_name} {customer?.last_name}{vehicle?.year ? ` / ${vehicle.year}` : ''}{vehicle?.engine_capacity ? ` / ${vehicle.engine_capacity}` : ''}</p></div></div>
     {customer?.phone && <a className="phone-link" href={`tel:${customer.phone.replace(/[^\d+]/g, '')}`}>{customer.phone} <ArrowRight size={15} /></a>}
+    {job.contact_email && <a className="phone-link" href={`mailto:${job.contact_email}`}>{job.contact_email} <ArrowRight size={15} /></a>}
     <ContactFlag job={job} />
     <div className="editor-tabs" role="tablist" aria-label="Job record sections">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}</div>
     {tab === 'card' && <div role="tabpanel" id="panel-card" aria-labelledby="tab-card">

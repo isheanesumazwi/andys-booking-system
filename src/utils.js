@@ -18,6 +18,7 @@ export const normalizePostcode = (value) => {
 };
 export const validPostcode = (value) => /^[A-Z]{1,2}\d[A-Z\d]? \d[A-Z]{2}$/.test(normalizePostcode(value));
 export const validRegistration = (value) => /^[A-Z0-9]{2,8}$/.test(normalizeRegistration(value));
+export const validEmail = (value) => value.trim().length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 export const localDate = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 export const addDays = (date, days) => {
   const result = new Date(`${date}T12:00:00`);
@@ -49,6 +50,7 @@ export function jobContact(job) {
   return {
     name: record?.name || job.contact_name || `${customer?.first_name || ''} ${customer?.last_name || ''}`.trim(),
     phone: record?.phone || job.contact_phone || customer?.phone || '',
+    email: record?.email || job.contact_email || '',
     reg_no: record?.reg_no || job.vehicle?.reg_no || '',
     make: record?.make || job.vehicle?.make || '',
     model: record?.model || job.vehicle?.model || '',
