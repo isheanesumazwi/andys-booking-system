@@ -36,7 +36,7 @@ test('known vehicles booked with a different phone are held for review', async (
   await db.exec(migration);
   await db.exec(migration);
 
-  const booking = (patch = {}) => ({ first_name: 'James', last_name: 'Taylor', phone: '07700 900123', reg_no: 'AB12CDE', make: 'Ford', model: 'Focus', year: 2018, booking_date: '2099-01-07', booking_time: '10:30', service_type: 'Interim service', customer_address: '1 High Street', customer_postcode: 'NP19 8JJ', ...patch });
+  const booking = (patch = {}) => ({ first_name: 'James', last_name: 'Taylor', phone: '07700 900123', reg_no: 'AB12CDE', make: 'Ford', model: 'Focus', year: 2018, booking_date: '2099-01-07', booking_time: '10:30', service_type: 'Interim service', customer_address: '1 High Street', customer_postcode: 'NP19 8JJ', email: 'James@Example.com', ...patch });
   const create = (patch, user = null, role = 'anon') => as(user, role, async () => (await db.query('select public.create_booking($1) as status', [booking(patch)])).rows[0].status);
   const job = async (time) => (await db.query('select * from public.jobs where booking_time=$1', [time])).rows[0];
 
@@ -50,6 +50,14 @@ test('known vehicles booked with a different phone are held for review', async (
     assert.equal(await create({ phone: '0044 7700 900123', booking_time: '12:30', booking_date: '2099-01-21' }), 'Booked');
     assert.equal((await job('11:30')).contact_phone, '');
     assert.equal((await db.query('select count(*)::int as count from public.customers')).rows[0].count, 1);
+    assert.equal((await job('11:30')).contact_email, 'james@example.com');
+  });
+  await t.test('online bookings need a valid email', async () => {
+    const before = await count();
+    await assert.rejects(create({ email: '', booking_time: '15:30', booking_date: '2099-01-14' }), /valid email/);
+    await assert.rejects(create({ email: 'james@example', booking_time: '15:30', booking_date: '2099-01-14' }), /valid email/);
+    await assert.rejects(create({ ...other, ...later, email: 'nope', change_request: true }), /valid email/);
+    assert.equal(await count(), before);
   });
   await t.test('a different number on an actively booked car is asked first and saves nothing', async () => {
     const before = await count();
@@ -89,7 +97,7 @@ test('known vehicles booked with a different phone are held for review', async (
     for (const item of seen) await as(owner, 'authenticated', () => db.query('select public.set_job_status($1,$2)', [item.id, 'Completed']));
     const done = await job('11:30');
     assert.ok(done.completed_at);
-    assert.deepEqual(done.completed_record, { name: 'James Taylor', phone: '07700 900123', reg_no: 'AB12CDE', make: 'Ford', model: 'Focus' });
+    assert.deepEqual(done.completed_record, { name: 'James Taylor', phone: '07700 900123', email: 'james@example.com', reg_no: 'AB12CDE', make: 'Ford', model: 'Focus' });
     assert.equal((await job('13:30')).completed_record.name, 'Priya Shah');
     assert.equal(await create({ first_name: 'Sam', last_name: 'New', phone: '07700 900777', booking_time: '15:30', booking_date: '2099-03-04' }), 'Booked');
     const fresh = await job('15:30');
@@ -110,7 +118,7 @@ test('known vehicles booked with a different phone are held for review', async (
     assert.equal(reopened.completed_at, null);
   });
   await t.test('the workshop can book a known car directly', async () => {
-    assert.equal(await create({ ...other, booking_time: '16:30', booking_date: '2099-03-08' }, owner, 'authenticated'), 'Booked');
+    assert.equal(await create({ ...other, email: '', booking_time: '16:30', booking_date: '2099-03-08' }, owner, 'authenticated'), 'Booked');
   });
 });
 

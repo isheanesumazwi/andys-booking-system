@@ -2,10 +2,12 @@
 -- Phones match on their last 10 digits, so +44 and 07 versions of a number are the same.
 -- A different phone on a car with an active booking is asked whether to change that booking.
 -- Completed jobs never block new bookings, and keep a permanent copy of who and what they were.
+-- Online bookings need an email, which is kept on the job.
 begin;
 
 alter table public.jobs add column if not exists contact_name text not null default '' check (length(contact_name) <= 170);
 alter table public.jobs add column if not exists contact_phone text not null default '' check (length(contact_phone) <= 25);
+alter table public.jobs add column if not exists contact_email text not null default '' check (length(contact_email) <= 254);
 alter table public.jobs add column if not exists replaces_job_id bigint references public.jobs(id) on delete set null;
 alter table public.jobs add column if not exists completed_at timestamptz;
 alter table public.jobs add column if not exists completed_record jsonb;
@@ -20,7 +22,7 @@ begin
     if old.status <> 'Completed' then new.completed_at := now(); end if;
     if old.status <> 'Completed' or new.job_card = old.job_card then
       select jsonb_build_object('name', coalesce(nullif(new.contact_name, ''), trim(c.first_name || ' ' || c.last_name)),
-          'phone', coalesce(nullif(new.contact_phone, ''), c.phone), 'reg_no', v.reg_no, 'make', v.make, 'model', v.model)
+          'phone', coalesce(nullif(new.contact_phone, ''), c.phone), 'email', new.contact_email, 'reg_no', v.reg_no, 'make', v.make, 'model', v.model)
         into new.completed_record
         from public.vehicles v left join public.customers c on c.id = v.customer_id
         where v.id = new.vehicle_id;
@@ -37,7 +39,7 @@ create trigger jobs_record_completion before update on public.jobs
   for each row execute function public.record_job_completion();
 
 update public.jobs j set completed_at = coalesce(j.completed_at, j.updated_at), completed_record = jsonb_build_object(
-    'name', trim(c.first_name || ' ' || c.last_name), 'phone', c.phone, 'reg_no', v.reg_no, 'make', v.make, 'model', v.model)
+    'name', trim(c.first_name || ' ' || c.last_name), 'phone', c.phone, 'email', j.contact_email, 'reg_no', v.reg_no, 'make', v.make, 'model', v.model)
   from public.vehicles v left join public.customers c on c.id = v.customer_id
   where v.id = j.vehicle_id and j.status = 'Completed' and j.completed_record is null;
 
@@ -140,6 +142,7 @@ declare
   status_value text;
   phone_value text := trim(p_details->>'phone');
   name_value text := trim(trim(p_details->>'first_name') || ' ' || trim(p_details->>'last_name'));
+  email_value text := lower(trim(coalesce(p_details->>'email', '')));
   vehicle_key bigint;
   existing_phone text;
   active_job bigint;
@@ -160,6 +163,11 @@ begin
     or postcode_value is null or postcode_value !~ '^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$'
   then
     raise exception 'Please enter your full address and postcode.';
+  end if;
+  if (email_value = '' and not owner_access)
+    or (email_value <> '' and (length(email_value) > 254 or email_value !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$'))
+  then
+    raise exception 'Please enter a valid email address.';
   end if;
   status_value := case when owner_access or lower(service_value) in ('interim service', 'full service', 'major service')
     then 'Booked' else 'Pending Confirmation' end;
@@ -198,9 +206,9 @@ begin
       end if;
     end if;
     insert into public.jobs (vehicle_id, booking_date, booking_time, status, payment_status, amount_due, service_type,
-      customer_address, customer_postcode, contact_name, contact_phone, replaces_job_id)
+      customer_address, customer_postcode, contact_name, contact_phone, contact_email, replaces_job_id)
       values (vehicle_key, date_value, time_value, status_value, 'Unpaid', 0, service_value,
-        address_value, postcode_value, name_value, phone_value, active_job);
+        address_value, postcode_value, name_value, phone_value, email_value, active_job);
     return status_value;
   end if;
 
@@ -208,7 +216,7 @@ begin
     p_details->>'reg_no', p_details->>'make', p_details->>'model', (p_details->>'year')::integer,
     nullif(trim(p_details->>'engine_capacity'), ''), date_value, 'Pending Confirmation', service_value);
   update public.jobs j set booking_time = time_value, customer_address = address_value,
-      customer_postcode = postcode_value, status = status_value
+      customer_postcode = postcode_value, contact_email = email_value, status = status_value
     from public.vehicles v
     where j.vehicle_id = v.id and upper(regexp_replace(v.reg_no, '\s', '', 'g')) = reg_value
       and j.booking_date = date_value and j.status <> 'Completed';
