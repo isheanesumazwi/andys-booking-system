@@ -1,7 +1,24 @@
-import { useEffect, useState } from 'react';
-import { LoaderCircle, Search } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { CalendarPlus, LoaderCircle, Search } from 'lucide-react';
+import { calendarEvent, googleCalendarLink, icsFile } from './calendar.js';
 import supabase from './supabaseClient.js';
-import { BOOKING_SLOTS, bookingDates, dateLabel, localDate, normalizePostcode, slotLabel, validPostcode } from './utils.js';
+import { bookingDates, dateLabel, DEFAULT_SETTINGS, localDate, normalizePostcode, openDaysText, slotLabel, slotTimes, validPostcode } from './utils.js';
+
+// The owner's opening days and hours, fetched once per page and shared by everything that needs them.
+let settingsRequest = null;
+export function useBookingSettings() {
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let alive = true;
+    settingsRequest ??= supabase.rpc('get_booking_settings')
+      .then(({ data, error }) => (error || !data ? DEFAULT_SETTINGS : { ...DEFAULT_SETTINGS, ...data }), () => DEFAULT_SETTINGS);
+    settingsRequest.then((value) => { if (alive) setSettings(value); });
+    return () => { alive = false; };
+  }, []);
+  return settings;
+}
+export const reloadBookingSettings = () => { settingsRequest = null; };
 
 export function Field({ label, children, hint }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
@@ -53,7 +70,9 @@ export function AddressFields({ form, onChange }) {
 
 const SLOT_STATES = { pending: 'waiting for confirmation', booked: 'already booked' };
 
-export function SlotPicker({ admin = false, date, time, refresh = 0, onDate, onTime }) {
+export function SlotPicker({ admin = false, date, time, refresh = 0, onDate, onTime, keep = '' }) {
+  const settings = useBookingSettings();
+  const slots = settings.slots || slotTimes(settings);
   const [taken, setTaken] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -69,14 +88,14 @@ export function SlotPicker({ admin = false, date, time, refresh = 0, onDate, onT
       setLoading(false);
       if (dbError) { setError('Available times could not be loaded. Please try again.'); return; }
       setError('');
-      setTaken(Object.fromEntries(data.map((slot) => [slot.slot_time, slot.state])));
+      setTaken(Object.fromEntries(data.filter((slot) => `${slot.slot_date} ${slot.slot_time}` !== keep).map((slot) => [slot.slot_time, slot.state])));
     };
     setLoading(true);
     setTaken({});
     void load();
     const timer = setInterval(() => { void load(); }, 60000);
     return () => { alive = false; clearInterval(timer); };
-  }, [date, refresh]);
+  }, [date, refresh, keep]);
 
   useEffect(() => { if (time && taken[time]) onTime(''); }, [taken, time, onTime]);
 
@@ -84,10 +103,10 @@ export function SlotPicker({ admin = false, date, time, refresh = 0, onDate, onT
   return <>
     {admin
       ? <Field label="Date" hint="This booking will be added as Booked. Any day can be used here."><input aria-label="Booking date" type="date" required min={today} value={date} onChange={(e) => onDate(e.target.value)} /></Field>
-      : <div className="field"><span>Choose a day</span><div className="date-options" role="group" aria-label="Available days">{bookingDates().map((day) => <button type="button" key={day} aria-pressed={date === day} onClick={() => onDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric', month: 'short' })}</strong></button>)}</div><small>We're booking in on Wednesdays and Thursdays.</small></div>}
+      : <div className="field"><span>Choose a day</span><div className="date-options" role="group" aria-label="Available days">{bookingDates(localDate(), 8, settings).map((day) => <button type="button" key={day} aria-pressed={date === day} onClick={() => onDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric', month: 'short' })}</strong></button>)}</div><small>We're booking in on {openDaysText(settings)}.</small></div>}
     {date && <div className="field">
       <span>Choose a time{loading ? '...' : ''}</span>
-      <div className="slot-grid" role="group" aria-label="Available times">{BOOKING_SLOTS.map((slot) => {
+      <div className="slot-grid" role="group" aria-label="Available times">{slots.map((slot) => {
         const state = taken[slot];
         const unavailable = Boolean(state) || past(slot);
         return <button type="button" key={slot} className={state ? `slot-${state}` : ''} disabled={unavailable} aria-pressed={time === slot} aria-label={`${slotLabel(slot)}${state ? `, ${SLOT_STATES[state]}` : past(slot) ? ', time has passed' : ''}`} onClick={() => onTime(slot)}>{slotLabel(slot)}</button>;
@@ -97,4 +116,45 @@ export function SlotPicker({ admin = false, date, time, refresh = 0, onDate, onT
       {error && <p className="lookup-status" role="alert">{error}</p>}
     </div>}
   </>;
+}
+
+export const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
+
+// Cloudflare's free spam check. Without a site key the form works as before.
+export function Turnstile({ onToken }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return undefined;
+    let alive = true;
+    let widget;
+    const render = () => {
+      if (!alive || !ref.current || !window.turnstile) return;
+      widget = window.turnstile.render(ref.current, { sitekey: TURNSTILE_SITE_KEY, callback: onToken, 'expired-callback': () => onToken(''), 'error-callback': () => onToken('') });
+    };
+    let script = document.querySelector('script[data-turnstile]');
+    if (window.turnstile) render();
+    else {
+      if (!script) {
+        script = Object.assign(document.createElement('script'), { src: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit', async: true });
+        script.dataset.turnstile = '';
+        document.head.appendChild(script);
+      }
+      script.addEventListener('load', render);
+    }
+    return () => { alive = false; script?.removeEventListener('load', render); if (widget !== undefined) window.turnstile?.remove(widget); };
+  }, [onToken]);
+  return TURNSTILE_SITE_KEY ? <div ref={ref} className="turnstile" /> : null;
+}
+
+export function AddToCalendar({ booking, uid }) {
+  const event = calendarEvent(booking);
+  function download() {
+    const url = URL.createObjectURL(new Blob([icsFile(event, uid)], { type: 'text/calendar' }));
+    Object.assign(document.createElement('a'), { href: url, download: 'andys-beechwood-booking.ics' }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return <div className="calendar-buttons">
+    <button type="button" className="button button-outline" onClick={download}><CalendarPlus size={16} /> Add to calendar</button>
+    <a className="button button-outline" href={googleCalendarLink(event)} target="_blank" rel="noreferrer">Google Calendar</a>
+  </div>;
 }
