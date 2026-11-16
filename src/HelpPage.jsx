@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { ArrowRight, MapPin, Phone, Mail } from 'lucide-react';
-import { OPENING_HOURS, SERVICE_PACKAGES, SERVICES, WORKSHOP } from './utils.js';
+import { useBookingSettings } from './BookingFields.jsx';
+import { openDaysText, openingHoursText, SERVICE_PACKAGES, SERVICES, WORKSHOP } from './utils.js';
 
 const address = WORKSHOP.address;
-const questions = [
-  ['What are your opening times?', `We're open ${OPENING_HOURS}. Sunday appointments are by arrangement with Andy for certain jobs.`],
-  ['How do I book?', 'Choose the work you need, enter your contact, address and vehicle details, then pick a Wednesday or Thursday and a free time.'],
+const questions = (settings) => [
+  ['What are your opening times?', `We're open ${openingHoursText(settings)}. Other days, such as Sundays, are by arrangement with Andy for certain jobs.`],
+  ['How do I book?', `Choose the work you need, enter your vehicle, contact and address details, then pick a free time on ${openDaysText(settings)}.`],
   ['Is my booking confirmed straight away?', `Interim, full and major services are confirmed straight away. Other work is a request until the workshop confirms it, so please wait for confirmation before bringing your car in.`],
   ['What do the coloured times mean?', 'Red times are booked. Amber times are waiting to be confirmed, so check again in 30 minutes as they may open up, or choose another time.'],
   ['What is included in each service?', SERVICE_PACKAGES.map(([name, description]) => `${name}: ${description}.`).join(' ')],
   ['Do you offer any free checks?', 'Yes. We offer a free battery check and a free suspension and safety check.'],
-  ['Can I change or cancel my booking?', 'Call or email the workshop with your registration and booking date. Andy can amend or remove the booking for you.'],
+  ['Can I change or cancel my booking?', 'Yes. Use the private link on your confirmation screen or in your confirmation email to move or cancel it. You can also call or email the workshop with your registration and booking date.'],
   ['What if my registration is not found?', 'You can enter the make and model manually and continue booking. Some vehicles may not be available through the MOT history lookup.'],
   ['How much will the work cost?', 'Contact the workshop to discuss your vehicle and the work needed. Submitting a booking request does not provide a price quote.'],
   ['Where is the workshop?', `You can find us at ${address}. Use Go now below to open directions in your maps app.`],
@@ -19,17 +20,18 @@ const questions = [
 export default function HelpPage() {
   const [search, setSearch] = useState('');
   const [service, setService] = useState('');
+  const settings = useBookingSettings();
   const apple = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent);
   const destination = encodeURIComponent(address);
   const directions = apple ? `https://maps.apple.com/?daddr=${destination}` : `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
-  const filtered = questions.filter((entry) => entry.join(' ').toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = questions(settings).filter((entry) => entry.join(' ').toLowerCase().includes(search.trim().toLowerCase()));
   return <main className="help-main shell">
     <div className="help-heading"><p className="eyebrow">ABOUT AND HELP</p><h1>How can we help you?</h1><p className="muted">Friendly, local car care at Andy's Beechwood Car Care in Newport.</p></div>
     <section className="help-card" aria-labelledby="contact-heading">
       <h2 id="contact-heading">Get in touch</h2>
       <div className="contact-grid">
         <div><Phone size={22} /><h3>Call us</h3><a href="tel:+447915392353">+44 7915 392353</a></div>
-        <div><Mail size={22} /><h3>Email us</h3><a href="mailto:Andybeechwoodnp@gmail.com">Andybeechwoodnp@gmail.com</a></div>
+        <div><Mail size={22} /><h3>Email us</h3><a href={`mailto:${WORKSHOP.email}`}>{WORKSHOP.email}</a></div>
         <div><MapPin size={22} /><h3>Visit the workshop</h3><p>{address}</p><a className="button button-primary button-small" href={directions} target="_blank" rel="noreferrer">Go now <ArrowRight size={16} /></a><a className="map-reference" href="https://maps.app.goo.gl/LV7HDzL1RBqbHQYx6?g_st=ic" target="_blank" rel="noreferrer">View on Google Maps</a></div>
       </div>
       <iframe className="workshop-map" title="Map of Andy's Beechwood Car Care, 1A Warwick Road, Newport" src={`https://maps.google.com/maps?q=${destination}&output=embed`} loading="lazy" referrerPolicy="no-referrer" />

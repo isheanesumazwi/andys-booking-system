@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, KeyRound, ClipboardList, CreditCard, House, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BellRing, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, KeyRound, ClipboardList, CreditCard, Download, House, Mail, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
-import { addDays, BOOKING_SLOTS, dateLabel, isAutoConfirmed, JOB_STATUSES, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, validEmail, validPostcode, validRegistration, validateBooking } from './utils.js';
+import { addDays, CLOSED_STATUSES, dateLabel, isAutoConfirmed, JOB_STATUSES, jobsCsv, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, slotTimes, validEmail, validPostcode, validRegistration, validateBooking } from './utils.js';
 import { cardTotals, JOB_PHOTO_BUCKET, normalizeCard } from './jobCard.js';
 import AdminCentre, { ChangePassword } from './AdminCentre.jsx';
-import { AddressFields, Field, SlotPicker } from './BookingFields.jsx';
+import { AddressFields, AddToCalendar, Field, SlotPicker, Turnstile, TURNSTILE_SITE_KEY, useBookingSettings } from './BookingFields.jsx';
+import ManageBooking from './ManageBooking.jsx';
+import MotDue from './MotDue.jsx';
+import OpeningHours from './OpeningHours.jsx';
+import PrivacyPage from './PrivacyPage.jsx';
 import HelpPage from './HelpPage.jsx';
 import { JobCardForm, JobCardsBoard, Receipt } from './JobCard.jsx';
 import PhotoCarousel from './PhotoCarousel.jsx';
@@ -61,6 +65,12 @@ function BookingForm({ admin = false, onCreated }) {
   const [step, setStep] = useState(0);
   const [back, setBack] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [company, setCompany] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileKey, setTurnstileKey] = useState(0);
+  const [manageToken, setManageToken] = useState('');
+  const [emailed, setEmailed] = useState(false);
   const formRef = useRef(null);
   const headingRef = useRef(null);
   const moved = useRef(false);
@@ -153,11 +163,13 @@ function BookingForm({ admin = false, onCreated }) {
     if (incomplete !== -1) { go(incomplete); setError(stepError(incomplete)); return; }
     const validation = validateBooking(form);
     if (validation) { setError(validation); return; }
-    if (configurationError) { setError(configurationError); return; }
+    if (!admin && !agreed) { setError('Please agree to the privacy policy to book.'); return; }
+    if (!admin && TURNSTILE_SITE_KEY && !turnstileToken) { setError('Please complete the security check.'); return; }
+    if (admin && configurationError) { setError(configurationError); return; }
     setBusy(true);
     setError('');
     try {
-      const { data, error: dbError } = await supabase.rpc('create_booking', { p_details: {
+      const details = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
         phone: form.phone.trim(),
@@ -173,17 +185,33 @@ function BookingForm({ admin = false, onCreated }) {
         customer_address: [form.address_line1, form.address_line2, form.address_town].map((line) => line.trim()).filter(Boolean).join('\n'),
         customer_postcode: normalizePostcode(form.customer_postcode),
         change_request: changeRequest,
-      } });
-      if (dbError) throw dbError;
-      if (data === 'Already Booked') { setAlreadyBooked(true); return; }
+      };
+      let result;
+      if (admin) {
+        const { data, error: dbError } = await supabase.rpc('create_booking', { p_details: details });
+        if (dbError) throw dbError;
+        result = { status: data };
+      } else {
+        // Online bookings go through the site's server, which runs the spam checks and sends the emails.
+        const response = await fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ details: { ...details, privacy_accepted: true }, turnstile_token: turnstileToken, company }) });
+        result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Please try again.');
+      }
+      if (result.status === 'Already Booked') { setAlreadyBooked(true); return; }
       setAlreadyBooked(false);
       setChanging(changeRequest);
-      setSent(data);
+      setManageToken(result.token || '');
+      setEmailed(Boolean(result.emailed));
+      setSent(result.status);
       onCreated?.();
     } catch (err) {
       setError(`Booking could not be saved: ${err.message}`);
       setSlotRefresh((value) => value + 1);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      // Each security check answer works once, so a fresh one is needed for another try.
+      if (!admin && TURNSTILE_SITE_KEY) { setTurnstileToken(''); setTurnstileKey((value) => value + 1); }
+    }
   }
 
   function startAgain() {
@@ -192,6 +220,8 @@ function BookingForm({ admin = false, onCreated }) {
     setForm({ ...emptyBooking });
     setStep(0);
     setReviewed(false);
+    setAgreed(false);
+    setManageToken('');
   }
 
   if (sent) return <div className="booking-success wizard-step">
@@ -201,6 +231,9 @@ function BookingForm({ admin = false, onCreated }) {
     <p>{admin ? 'The vehicle is now on your workshop agenda.' : sent === 'Booked' ? `Your ${form.service_type.trim()} is confirmed. See you then!` : changing ? 'Your change request has been sent. Andy will review it, and your existing booking stays in place until then.' : 'Booking request sent! Andy will review your request shortly.'}</p>
     <div className="confirmation-details"><strong className="registration">{registration}</strong><span>{dateLabel(form.booking_date)} at {slotLabel(form.booking_time)}</span></div>
     {!admin && sent !== 'Booked' && <p className="muted">This is a request, not a confirmed appointment. Andy will contact you on the phone number you provided.</p>}
+    {!admin && emailed && <p className="muted">We've emailed the details to {form.email.trim()}.</p>}
+    {!admin && <AddToCalendar booking={{ booking_date: form.booking_date, booking_time: form.booking_time, service_type: form.service_type.trim(), reg_no: registration, status: sent }} uid={manageToken || `${registration}-${form.booking_date}`} />}
+    {manageToken && <p className="manage-link"><a href={`/manage?t=${manageToken}`}>Change or cancel this booking</a><small>Keep this link. It's also in your email.</small></p>}
     <button className="button button-outline" onClick={startAgain}>Make another booking <ArrowRight size={16} /></button>
   </div>;
 
@@ -260,9 +293,12 @@ function BookingForm({ admin = false, onCreated }) {
           <dd>{lines.filter(Boolean).map((line) => <span key={line}>{line}</span>)}</dd>
           <button type="button" className="text-button" aria-label={`Change ${label.toLowerCase()}`} onClick={() => go(index)}>Change</button>
         </div>)}</dl>
+        {!admin && <label className="consent"><input type="checkbox" checked={agreed} onChange={(e) => { setError(''); setAgreed(e.target.checked); }} /> <span>I agree to the <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>, and to Andy's Beechwood Car Care using my details to manage this booking.</span></label>}
+        {!admin && <Turnstile key={turnstileKey} onToken={setTurnstileToken} />}
         {!admin && <p className="review-note">{isAutoConfirmed(form.service_type) ? `Your ${form.service_type.trim().toLowerCase()} will be confirmed straight away.` : "This is a request until Andy confirms it. He'll contact you on the number you gave."}</p>}
       </>}
     </fieldset>
+    {!admin && <div className="trap" aria-hidden="true"><label>Company <input tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} /></label></div>}
     <Notice>{error}</Notice>
     {alreadyBooked && <div className="already-booked" role="alert"><strong>This car is already booked in with us.</strong><p>Do you want to change that booking to the day and time you've chosen?</p><div><button type="button" className="button button-primary" disabled={busy} onClick={() => { void submit(true); }}>{busy ? <Spinner /> : <Check size={16} />} Yes, change my booking</button><button type="button" className="button button-outline" disabled={busy} onClick={() => setAlreadyBooked(false)}>No, keep it</button></div></div>}
     <div className="wizard-footer">
@@ -274,10 +310,11 @@ function BookingForm({ admin = false, onCreated }) {
 }
 
 function PublicPage() {
-  const help = ['/about', '/help'].includes(window.location.pathname.replace(/\/$/, ''));
+  const path = window.location.pathname.replace(/\/$/, '');
+  const help = ['/about', '/help'].includes(path);
   return <div className="public-page">
     <header className="public-header shell"><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
-    {help ? <HelpPage /> : <main className="public-main shell">
+    {path === '/privacy' ? <PrivacyPage /> : path === '/manage' ? <ManageBooking /> : help ? <HelpPage /> : <main className="public-main shell">
       <section className="hero">
         <p className="eyebrow"><span className="tiny-line" /> YOUR LOCAL WORKSHOP</p>
         <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
@@ -292,7 +329,7 @@ function PublicPage() {
         <BookingForm />
       </section>
     </main>}
-    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><a href="/help">Contact, directions & FAQs</a></footer>
+    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><span className="footer-links"><a href="/help">Contact, directions & FAQs</a><a href="/privacy">Privacy policy</a></span></footer>
   </div>;
 }
 
@@ -328,6 +365,21 @@ function Modal({ title, onClose, children, className = '' }) {
   return <dialog ref={ref} className={`modal ${className}`} aria-labelledby="modal-title" onCancel={(e) => { e.preventDefault(); close.current(); }}><header className="modal-header"><h2 id="modal-title">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={21} /></button></header><div className="modal-body">{children}</div></dialog>;
 }
 
+// Emails go from the site's server so the Gmail password never reaches the browser.
+async function emailCustomer(jobId, kind) {
+  const { data } = await supabase.auth.getSession();
+  const response = await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token}` }, body: JSON.stringify({ job_id: jobId, kind }) });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'The email could not be sent.');
+  return result.to;
+}
+
+function downloadCsv(jobs, showCosts) {
+  const url = URL.createObjectURL(new Blob([jobsCsv(jobs, showCosts)], { type: 'text/csv;charset=utf-8' }));
+  Object.assign(document.createElement('a'), { href: url, download: `bookings-${localDate()}.csv` }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function jobDraft(job) {
   const vehicle = job.vehicle;
   const customer = vehicle?.customer;
@@ -348,6 +400,9 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
   const [cardSaving, setCardSaving] = useState(false);
   const [cardError, setCardError] = useState('');
   const [jobStatus, setJobStatus] = useState(job.status);
+  const [emailState, setEmailState] = useState({ busy: false, message: '', error: '' });
+  const settings = useBookingSettings();
+  const timeOptions = [...new Set([...(settings.slots || slotTimes(settings)), ...(draft.booking_time ? [draft.booking_time] : [])])].sort();
   const cardSavingRef = useRef(false);
   const cardDirty = JSON.stringify(card) !== savedCard;
   const totals = cardTotals(card);
@@ -391,6 +446,12 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
     setDraft((current) => ({ ...current, status }));
     setSaved((current) => JSON.stringify({ ...JSON.parse(current), status }));
     onSaved();
+  }
+  async function sendUpdate() {
+    if (dirty && !(await save())) return;
+    setEmailState({ busy: true, message: '', error: '' });
+    try { setEmailState({ busy: false, message: `Update emailed to ${await emailCustomer(job.id, 'update')}.`, error: '' }); }
+    catch (err) { setEmailState({ busy: false, message: '', error: err.message }); }
   }
   const changeCard = (update) => { setCardError(''); setCard(update); };
   const saveCard = useCallback(async () => {
@@ -451,7 +512,7 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
     <ContactFlag job={job} />
     <div className="editor-tabs" role="tablist" aria-label="Job record sections">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" id={`tab-${key}`} aria-controls={`panel-${key}`} aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}</div>
     {tab === 'card' && <div role="tabpanel" id="panel-card" aria-labelledby="tab-card">
-      {!canEdit && job.status !== 'Pending Confirmation' && <Field label="Job status"><select value={jobStatus} onChange={(e) => { void changeStatus(e.target.value); }}>{JOB_STATUSES.filter((status) => status !== 'Pending Confirmation').map((status) => <option key={status}>{status}</option>)}</select></Field>}
+      {!canEdit && job.status !== 'Pending Confirmation' && <Field label="Job status"><select value={jobStatus} onChange={(e) => { void changeStatus(e.target.value); }}>{JOB_STATUSES.filter((status) => status !== 'Pending Confirmation' && status !== 'Cancelled').map((status) => <option key={status}>{status}</option>)}</select></Field>}
       <JobCardForm jobId={job.id} card={card} showCosts={can('payments')} onChange={changeCard} />
       <Notice>{cardError}</Notice>
       <div className="editor-footer"><span className="save-state" role="status">{cardSaving ? <><Spinner /> Saving...</> : cardDirty ? 'Unsaved changes' : <><Check size={16} /> Job card saved</>}</span><button type="button" className="button button-primary" disabled={cardSaving || deleting || !cardDirty} onClick={() => { void saveCard(); }}>{cardSaving ? 'Saving...' : 'Save job card'}</button></div>
@@ -477,8 +538,8 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
         <div className="two-columns"><Field label="Make"><input required maxLength={100} value={draft.make} onChange={(e) => change('make', e.target.value)} /></Field><Field label="Model"><input required maxLength={100} value={draft.model} onChange={(e) => change('model', e.target.value)} /></Field></div>
         <div className="two-columns"><Field label="Year (optional)"><input type="number" min={1886} max={new Date().getFullYear() + 1} value={draft.year} onChange={(e) => change('year', e.target.value)} /></Field><Field label="Engine capacity (optional)"><input maxLength={50} value={draft.engine_capacity} onChange={(e) => change('engine_capacity', e.target.value)} /></Field></div>
         <ServicePicker value={draft.service_type} onChange={(value) => change('service_type', value)} />
-        <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job, including to a Sunday."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && draft.status !== 'Pending Confirmation' && draft.status !== 'Completed') change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
-        <div className="two-columns"><Field label="Time"><select value={draft.booking_time} onChange={(e) => change('booking_time', e.target.value)}><option value="">No time set</option>{BOOKING_SLOTS.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}</select></Field><Field label="Postcode"><input maxLength={8} value={draft.customer_postcode} onChange={(e) => change('customer_postcode', e.target.value.toUpperCase())} /></Field></div>
+        <div className="two-columns"><Field label="Booking date" hint="Change the date to move this job, including to a Sunday."><input type="date" required value={draft.booking_date} onChange={(e) => { change('booking_date', e.target.value); if (e.target.value !== draft.booking_date && !['Pending Confirmation', ...CLOSED_STATUSES].includes(draft.status)) change('status', 'Rescheduled'); }} /></Field><Field label="Job status"><select value={draft.status} onChange={(e) => change('status', e.target.value)}>{JOB_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></Field></div>
+        <div className="two-columns"><Field label="Time"><select value={draft.booking_time} onChange={(e) => change('booking_time', e.target.value)}><option value="">No time set</option>{timeOptions.map((slot) => <option key={slot} value={slot}>{slotLabel(slot)}</option>)}</select></Field><Field label="Postcode"><input maxLength={8} value={draft.customer_postcode} onChange={(e) => change('customer_postcode', e.target.value.toUpperCase())} /></Field></div>
         <Field label="Customer address"><textarea rows={3} maxLength={290} value={draft.customer_address} onChange={(e) => change('customer_address', e.target.value)} /></Field>
         <Field label="Diagnosis & service notes"><textarea rows={5} maxLength={10000} placeholder="What's happening with this vehicle?" value={draft.diagnosis_notes} onChange={(e) => change('diagnosis_notes', e.target.value)} /></Field>
         <Field label="Parts ordered"><textarea rows={3} maxLength={10000} placeholder="Parts, part numbers, supplier details..." value={draft.parts_ordered} onChange={(e) => change('parts_ordered', e.target.value)} /></Field>
@@ -489,6 +550,7 @@ function JobEditor({ job, initialTab = 'booking', can, onClose, onSaved, onDelet
       {(canEdit || can('payments')) ? <>
       <Notice>{error}</Notice><div className="editor-footer"><span className="save-state" role="status">{saving ? <><Spinner /> Saving...</> : dirty ? 'Unsaved changes' : <><Check size={16} /> All changes saved</>}</span><button className="button button-primary" disabled={saving || deleting}>{saving ? 'Saving...' : 'Save & close'}</button></div>
       <p className="muted small-text">Changes save automatically after you stop typing. Moving a pending request does not approve it.</p>
+      {canEdit && job.contact_email && <div className="email-update"><button type="button" className="button button-outline" disabled={emailState.busy || saving || deleting} onClick={() => { void sendUpdate(); }}>{emailState.busy ? <Spinner /> : <Mail size={16} />} Email the customer an update</button><small>Sends {job.contact_email} the booking's current date, time and status{draft.status === 'Cancelled' ? ', saying it is cancelled' : ''}.</small>{emailState.message && <p className="notice notice-success" role="status">{emailState.message}</p>}{emailState.error && <p className="notice" role="alert">{emailState.error}</p>}</div>}
       </> : <p className="muted small-text">You can view this booking but not change it.</p>}
     </form>
     {can('bookings_delete') && <div className="delete-booking"><p className="muted">Remove a test or incorrect booking permanently. The customer, vehicle and other bookings are retained.</p><button type="button" className="button button-danger" disabled={saving || deleting} onClick={deleteBooking}>{deleting ? <Spinner /> : <X size={16} />}{deleting ? 'Deleting...' : 'Delete booking'}</button></div>}
@@ -587,6 +649,8 @@ function Dashboard({ session }) {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [view, setView] = useState('agenda');
   const [calendarView, setCalendarView] = useState('week');
+  const [historyFilter, setHistoryFilter] = useState('Completed');
+  const [info, setInfo] = useState('');
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -618,6 +682,10 @@ function Dashboard({ session }) {
       const { error: dbError } = await supabase.rpc('approve_booking', { p_job_id: job.id });
       if (dbError) throw dbError;
       await load();
+      if (job.contact_email && job.booking_time) {
+        try { setInfo(`Approved. Confirmation emailed to ${await emailCustomer(job.id, 'confirmed')}.`); }
+        catch (err) { setInfo(`Approved. The confirmation email wasn't sent: ${err.message}`); }
+      } else setInfo('Approved.');
     } catch (err) { setError(`Approval failed: ${err.message}`); }
     finally { setApproving(null); }
   }
@@ -631,44 +699,45 @@ function Dashboard({ session }) {
     can('payments') && { key: 'payments', icon: CreditCard, label: 'Payments' },
     can('job_cards') && { key: 'cards', icon: ClipboardCheck, label: 'Job cards' },
     (can('bookings_view') || can('payments')) && { key: 'history', icon: ClipboardList, label: 'Completed jobs' },
+    can('bookings_view') && { key: 'mot', icon: BellRing, label: 'MOT due' },
     can('checks') && { key: 'lookup', icon: Search, label: 'Checks' },
     can('admin') && { key: 'admin', icon: UsersRound, label: 'Admin centre' },
   ].filter(Boolean);
   const allowedView = nav.some((item) => item.key === view);
   const firstView = nav[0]?.key;
   useEffect(() => { if (profile && !allowedView && firstView) setView(firstView); }, [profile, allowedView, firstView]);
-  const jobsView = !['lookup', 'admin'].includes(view) && allowedView;
+  const jobsView = !['lookup', 'admin', 'mot'].includes(view) && allowedView;
   const showCosts = can('payments');
   const pending = jobs.filter((job) => job.status === 'Pending Confirmation');
   const active = jobs.filter((job) => ['Booked', 'In Progress', 'Rescheduled'].includes(job.status));
-  const outstanding = jobs.filter((job) => job.payment_status !== 'Paid' && job.status !== 'Pending Confirmation').reduce((sum, job) => sum + Number(job.amount_due || 0), 0);
+  const outstanding = jobs.filter((job) => job.payment_status !== 'Paid' && !['Pending Confirmation', 'Cancelled'].includes(job.status)).reduce((sum, job) => sum + Number(job.amount_due || 0), 0);
   const filtered = jobs.filter((job) => {
     if (job.status === 'Pending Confirmation') return false;
-    if (view === 'agenda' && job.booking_date !== date) return false;
+    if (view === 'agenda' && (job.booking_date !== date || job.status === 'Cancelled')) return false;
     if (view === 'payments' && (job.payment_status === 'Paid' || Number(job.amount_due) <= 0)) return false;
-    if (view === 'history' && job.status !== 'Completed') return false;
+    if (view === 'history' && !(historyFilter === 'all' ? CLOSED_STATUSES.includes(job.status) : job.status === historyFilter)) return false;
     return jobMatches(job, search, showCosts);
   });
   // Past receipts are easier to find with the most recent job first.
   if (view === 'history') filtered.reverse();
   const open = (job, tab = 'booking') => setEditing({ job, tab });
   const savedJob = useCallback(() => { void load(); }, [load]);
-  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : view === 'cards' ? 'Job cards' : view === 'admin' ? 'Admin centre' : 'Checks';
+  const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : view === 'cards' ? 'Job cards' : view === 'admin' ? 'Admin centre' : view === 'mot' ? 'MOT reminders' : 'Checks';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{nav.map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">{(profile?.full_name || 'A').slice(0, 1).toUpperCase()}</div><div><strong>{profile?.full_name || 'Workshop team'}</strong><small>{profile?.role || session.user.email}</small></div><button onClick={() => setChangingPassword(true)} aria-label="Change password" title="Change password"><KeyRound size={17} /></button><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{nav.map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setInfo(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">{(profile?.full_name || 'A').slice(0, 1).toUpperCase()}</div><div><strong>{profile?.full_name || 'Workshop team'}</strong><small>{profile?.role || session.user.email}</small></div><button onClick={() => setChangingPassword(true)} aria-label="Change password" title="Change password"><KeyRound size={17} /></button><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
       <main className="dashboard-content">
-        <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">{view === 'admin' ? 'Manage your team and who can do what.' : view === 'lookup' ? 'Quick vehicle checks for the workshop.' : 'Your bookings, your jobs, everything in one place.'}</p></div>{can('bookings_manage') && view !== 'admin' && <button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button>}</div>
-        <Notice>{error}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
+        <div className="page-heading"><div><p className="eyebrow">A GOOD DAY TO GET THINGS MOVING</p><h1>{title}<span>.</span></h1><p className="muted">{view === 'admin' ? 'Manage your team, who can do what, and your opening hours.' : view === 'mot' ? 'Customers to remind before their MOT runs out.' : view === 'lookup' ? 'Quick vehicle checks for the workshop.' : 'Your bookings, your jobs, everything in one place.'}</p></div><div className="heading-actions">{jobsView && <button className="button button-outline" disabled={!authorized || jobs.length === 0} onClick={() => downloadCsv(jobs, showCosts)}><Download size={17} /> Export</button>}{can('bookings_manage') && view !== 'admin' && <button className="button button-primary" disabled={!authorized} onClick={() => setCreating(true)}><Plus size={18} /> Add booking</button>}</div></div>
+        <Notice>{error}</Notice><Notice success>{info}</Notice>{error && <button className="button button-outline retry-button" onClick={load}>Retry connection</button>}
         {jobsView && <div className="stats-grid"><div className="stat-card"><span className="stat-icon"><CalendarDays size={21} /></span><div><small>On the books today</small><strong>{active.filter((job) => job.booking_date === localDate()).length}<span>vehicles</span></strong></div></div><div className="stat-card"><span className="stat-icon amber"><Clock3 size={21} /></span><div><small>Awaiting confirmation</small><strong>{pending.length}<span>requests</span></strong></div></div>{showCosts && <div className="stat-card"><span className="stat-icon"><CreditCard size={21} /></span><div><small>Outstanding payments</small><strong>{money(outstanding)}</strong></div></div>}</div>}
         {jobsView && pending.length > 0 && <section className="approval-section"><div className="section-title"><div><span className="amber-dot" /><h2>New booking requests</h2><span className="count-badge">{pending.length}</span></div><small>A quick review, then they're on the agenda.</small></div><div className="approval-list">{pending.map((job) => <div className="approval-card" key={job.id}><strong className="registration">{job.vehicle?.reg_no}</strong><div className="approval-person"><strong>{job.vehicle?.customer?.first_name} {job.vehicle?.customer?.last_name}</strong><span>{job.vehicle?.make} {job.vehicle?.model} &middot; {dateLabel(job.booking_date, { day: 'numeric', month: 'short' })}{job.booking_time && ` at ${slotLabel(job.booking_time)}`}</span>{job.service_type && <span>{job.service_type}</span>}{job.customer_address && <span>{job.customer_address.replaceAll('\n', ', ')}, {job.customer_postcode}</span>}<ContactFlag job={job} />{job.vehicle?.customer?.phone && <a href={`tel:${job.vehicle.customer.phone.replace(/[^\d+]/g, '')}`}>{job.vehicle.customer.phone}</a>}</div><div className="approval-actions"><button className="button button-outline button-small" disabled={approving !== null} onClick={() => open(job)}>{can('bookings_manage') ? 'Edit / delete booking' : 'View booking'}</button>{can('bookings_manage') && <button className="button button-primary button-small" disabled={approving !== null} onClick={() => approve(job)}>{approving === job.id ? <Spinner /> : <Check size={16} />} Approve booking</button>}</div></div>)}</div></section>}
-        {!allowedView ? null : view === 'admin' ? <AdminCentre currentUserId={session.user.id} onChanged={savedJob} /> : view === 'lookup' ? <PlateLookup enabled={authorized} /> : view === 'cards' ? <JobCardsBoard jobs={jobs} loading={loading} authorized={authorized} showCosts={showCosts} onOpen={(job) => open(job, 'card')} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
+        {!allowedView ? null : view === 'admin' ? <><AdminCentre currentUserId={session.user.id} onChanged={savedJob} /><OpeningHours /></> : view === 'mot' ? <MotDue jobs={jobs} loading={loading} /> : view === 'lookup' ? <PlateLookup enabled={authorized} /> : view === 'cards' ? <JobCardsBoard jobs={jobs} loading={loading} authorized={authorized} showCosts={showCosts} onOpen={(job) => open(job, 'card')} /> : <section className={`agenda-panel ${calendarView === 'month' ? 'calendar-month' : ''}`}>
           {view === 'agenda' && <div className="calendar-view-toggle" role="group" aria-label="Calendar view"><button className="button button-small button-outline" aria-pressed={calendarView === 'week'} onClick={() => { setCalendarView('week'); setWeek(date); }}>Week</button><button className="button button-small button-outline" aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Whole month</button>{calendarView === 'month' && <button className="button button-small button-outline" onClick={() => setDate(localDate())}>Today</button>}</div>}
           {view === 'agenda' && calendarView === 'month' && <MonthCalendar date={date} jobs={jobs} onSelect={(day) => { setDate(day); setWeek(day); }} />}
-          <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : view === 'history' ? 'Most recent first. Open a job to view or print its receipt.' : 'Across all booking dates'}</p></div><div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder={view === 'history' ? 'Name, car, amount or date' : 'Search name or registration'} value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
+          <div className="agenda-heading"><div><h2>{view === 'agenda' ? 'Your daily line-up' : view === 'payments' ? 'Outstanding balances' : 'Job history'}</h2><p className="muted">{view === 'agenda' ? dateLabel(date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : view === 'history' ? 'Most recent first. Open a job to view or print its receipt.' : 'Across all booking dates'}</p></div>{view === 'history' && <label className="history-filter"><span className="sr-only">Show</span><select value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value)}><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option><option value="No-show">No-shows</option><option value="all">All finished jobs</option></select></label>}<div className="search-input"><Search size={17} /><input aria-label="Search jobs" placeholder={view === 'history' ? 'Name, car, amount or date' : 'Search name or registration'} value={search} onChange={(e) => setSearch(e.target.value)} /></div></div>
           {view === 'agenda' && <><div className="calendar-controls"><button className="button button-outline button-small" onClick={() => { setDate(localDate()); setWeek(localDate()); }}>Today</button><label className="date-jump"><CalendarDays size={16} /><input type="date" aria-label="Go to agenda date" value={date} onChange={(e) => { if (e.target.value) { setDate(e.target.value); setWeek(e.target.value); } }} /></label><div className="week-controls"><button className="icon-button" aria-label="Previous seven days" onClick={() => { setWeek(addDays(week, -7)); setDate(addDays(week, -7)); }}><ChevronLeft size={20} /></button><button className="icon-button" aria-label="Next seven days" onClick={() => { setWeek(addDays(week, 7)); setDate(addDays(week, 7)); }}><ChevronRight size={20} /></button></div></div><div className="date-tabs">{Array.from({ length: 7 }, (_, i) => addDays(week, i)).map((day) => { const count = active.filter((job) => job.booking_date === day).length; const held = pending.filter((job) => job.booking_date === day).length; return <button key={day} aria-pressed={date === day} className={date === day ? 'date-active' : ''} onClick={() => setDate(day)}><small>{dateLabel(day, { weekday: 'short' })}</small><strong>{dateLabel(day, { day: 'numeric' })}</strong>{count || held ? <DayMarkers booked={count} pending={held} /> : <span>No active jobs</span>}</button>; })}</div></>}
           <div className="job-table"><div className="job-table-head"><span>VEHICLE / CUSTOMER</span><span>{view === 'agenda' ? 'JOB STATUS' : 'DATE / STATUS'}</span><span>{showCosts && 'PAYMENT'}</span><span>{showCosts && 'AMOUNT'}</span><span /></div>
             {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} showCosts={showCosts} onOpen={() => open(job, view === 'history' && showCosts ? 'receipt' : 'booking')} />)}

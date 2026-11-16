@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BadgeCheck, CarFront, Check, Camera, ChevronRight, ClipboardCheck, LoaderCircle, NotebookPen, Package, Plus, ScanSearch, Search, Stethoscope, Trash2 } from 'lucide-react';
 import { CHECK_LABELS, CHECK_RESULTS, CHECKLIST, DAMAGE_TYPES, JOB_PHOTO_BUCKET, WHEEL_POSITIONS, cardTotals, checkSummary, jobProgress, labourCost, partCost, withLabourCost } from './jobCard.js';
-import { dateLabel, jobContact, jobMatches, money, slotLabel, WORKSHOP } from './utils.js';
+import { dateLabel, jobContact, jobMatches, money, slotLabel, WORKSHOP, CLOSED_STATUSES } from './utils.js';
 import { Field } from './BookingFields.jsx';
 import supabase from './supabaseClient.js';
 
@@ -297,7 +297,7 @@ export function JobCardsBoard({ jobs, loading, authorized, showCosts = true, onO
   const term = search.toLowerCase().trim();
   const listed = jobs
     .filter((job) => job.status !== 'Pending Confirmation')
-    .filter((job) => filter === 'all' || (filter === 'completed' ? job.status === 'Completed' : job.status !== 'Completed'))
+    .filter((job) => filter === 'all' || (filter === 'completed' ? job.status === 'Completed' : !CLOSED_STATUSES.includes(job.status)))
     .filter((job) => jobMatches(job, term, showCosts))
     .map((job) => ({ job, progress: jobProgress(job, showCosts) }));
   if (filter !== 'active') listed.reverse();
