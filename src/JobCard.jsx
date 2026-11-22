@@ -258,7 +258,7 @@ export function Receipt({ jobId, details, card, issued }) {
   const date = (value) => (value ? dateLabel(value) : '—');
   return <article className="receipt">
     <header className="receipt-header">
-      <div><h2>{WORKSHOP.name}</h2><p>{WORKSHOP.address}</p><p>{WORKSHOP.phone} · {WORKSHOP.email}</p></div>
+      <div><img className="receipt-logo" src="/brand/logo-blue.svg" alt="" width="150" height="88" /><h2>{WORKSHOP.name}</h2><p>{WORKSHOP.address}</p><p>{WORKSHOP.phone} · {WORKSHOP.email}</p></div>
       <div className="receipt-meta"><strong>RECEIPT</strong><span>No. {jobId}</span><span>Issued {dateLabel(issued)}</span></div>
     </header>
     <section className="receipt-parties">

@@ -150,7 +150,7 @@ export function AddToCalendar({ booking, uid }) {
   const event = calendarEvent(booking);
   function download() {
     const url = URL.createObjectURL(new Blob([icsFile(event, uid)], { type: 'text/calendar' }));
-    Object.assign(document.createElement('a'), { href: url, download: 'andys-beechwood-booking.ics' }).click();
+    Object.assign(document.createElement('a'), { href: url, download: 'beechwood-booking.ics' }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return <div className="calendar-buttons">

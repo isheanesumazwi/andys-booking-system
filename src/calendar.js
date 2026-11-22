@@ -10,7 +10,7 @@ function stamp(date, time, addMinutes = 0) {
 export function calendarEvent({ booking_date: date, booking_time: time, service_type: service, reg_no: reg, status }) {
   const waiting = status === 'Pending Confirmation';
   return {
-    title: `${service || 'Car service'} at Andy's Beechwood Car Care${waiting ? ' (awaiting confirmation)' : ''}`,
+    title: `${service || 'Car service'} at Beechwood Car Care${waiting ? ' (awaiting confirmation)' : ''}`,
     details: `${reg ? `Vehicle: ${reg}. ` : ''}Questions? Call ${WORKSHOP.phone}.`,
     location: WORKSHOP.address,
     start: stamp(date, time),
@@ -24,9 +24,9 @@ const fold = (line) => (line ? line.match(/.{1,74}/g).join('\r\n ') : line);
 
 export function icsFile(event, uid) {
   return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Andys Beechwood Car Care//Bookings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Beechwood Car Care//Bookings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:${uid}@andys-beechwood-car-care`,
+    `UID:${uid}@beechwood-car-care`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART:${event.start}`,
     `DTEND:${event.end}`,
