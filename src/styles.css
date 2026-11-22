@@ -763,3 +763,16 @@ input[type="checkbox"] { accent-color: var(--green); width: 16px; height: 16px; 
   .manage-actions .button { flex-basis: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Brand logo */
+.brand-logo { display: inline-flex; align-items: center; flex-shrink: 0; }
+.brand-logo img { display: block; width: 168px; height: auto; }
+.login-logo { display: block; width: 160px; height: auto; }
+.sidebar-logo { display: block; width: 150px; height: auto; margin: -6px 11px 26px; }
+.receipt-logo { display: block; width: 130px; height: auto; margin-bottom: 10px; }
+@media (max-width: 700px) {
+  .brand-logo img { width: 132px; }
+}
+@media print {
+  .receipt-logo { width: 120px; }
+}

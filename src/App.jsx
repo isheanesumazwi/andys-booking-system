@@ -293,7 +293,7 @@ function BookingForm({ admin = false, onCreated }) {
           <dd>{lines.filter(Boolean).map((line) => <span key={line}>{line}</span>)}</dd>
           <button type="button" className="text-button" aria-label={`Change ${label.toLowerCase()}`} onClick={() => go(index)}>Change</button>
         </div>)}</dl>
-        {!admin && <label className="consent"><input type="checkbox" checked={agreed} onChange={(e) => { setError(''); setAgreed(e.target.checked); }} /> <span>I agree to the <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>, and to Andy's Beechwood Car Care using my details to manage this booking.</span></label>}
+        {!admin && <label className="consent"><input type="checkbox" checked={agreed} onChange={(e) => { setError(''); setAgreed(e.target.checked); }} /> <span>I agree to the <a href="/privacy" target="_blank" rel="noreferrer">privacy policy</a>, and to Beechwood Car Care using my details to manage this booking.</span></label>}
         {!admin && <Turnstile key={turnstileKey} onToken={setTurnstileToken} />}
         {!admin && <p className="review-note">{isAutoConfirmed(form.service_type) ? `Your ${form.service_type.trim().toLowerCase()} will be confirmed straight away.` : "This is a request until Andy confirms it. He'll contact you on the number you gave."}</p>}
       </>}
@@ -313,12 +313,12 @@ function PublicPage() {
   const path = window.location.pathname.replace(/\/$/, '');
   const help = ['/about', '/help'].includes(path);
   return <div className="public-page">
-    <header className="public-header shell"><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
+    <header className="public-header shell"><a href="/" className="brand-logo"><img src="/brand/logo-blue.svg" alt="Beechwood Car Care, Newport" width="176" height="103" /></a><nav className="public-nav" aria-label="Main navigation"><a href="/book" aria-current={!help ? 'page' : undefined}>Book a service</a><a href="/help" aria-current={help ? 'page' : undefined}>About & help</a><a className="staff-link" href="/admin"><ShieldCheck size={15} /> Workshop login <ArrowRight size={15} /></a></nav></header>
     {path === '/privacy' ? <PrivacyPage /> : path === '/manage' ? <ManageBooking /> : help ? <HelpPage /> : <main className="public-main shell">
       <section className="hero">
         <p className="eyebrow"><span className="tiny-line" /> YOUR LOCAL WORKSHOP</p>
         <h1>Good care.<br />For your car.<br /><span>And your peace<br className="desktop-break" /> of mind.</span></h1>
-        <p className="hero-description">A friendly face. Honest advice. A car that's ready for the road. Book your next visit with Andy's Beechwood Car Care.</p>
+        <p className="hero-description">A friendly face. Honest advice. A car that's ready for the road. Book your next visit with Beechwood Car Care.</p>
         <div className="hero-features"><span><CheckCircle2 size={17} /> Personal service</span><span><CheckCircle2 size={17} /> Straightforward booking</span></div>
         <div className="free-offers"><span><strong>FREE</strong> Battery check</span><span><strong>FREE</strong> Suspension and safety check</span></div>
         <PhotoCarousel />
@@ -329,7 +329,7 @@ function PublicPage() {
         <BookingForm />
       </section>
     </main>}
-    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Andy's Beechwood Car Care</span><span className="footer-links"><a href="/help">Contact, directions & FAQs</a><a href="/privacy">Privacy policy</a></span></footer>
+    <footer className="public-footer shell"><span>&copy; {new Date().getFullYear()} Beechwood Car Care</span><span className="footer-links"><a href="/help">Contact, directions & FAQs</a><a href="/privacy">Privacy policy</a></span></footer>
   </div>;
 }
 
@@ -349,7 +349,7 @@ function Login() {
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
-  return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><div className="login-heading"><span className="small-icon"><ShieldCheck size={23} /></span><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop team.</p></div></div>;
+  return <div className="login-page"><a href="/" className="back-link"><ArrowLeft size={17} /> Back to booking</a><div className="login-card"><div className="login-heading"><img className="login-logo" src="/brand/logo-blue.svg" alt="Beechwood Car Care, Newport" width="160" height="94" /><p className="eyebrow">WORKSHOP ACCESS</p><h1>Welcome back.</h1><p className="muted">Sign in to keep your workshop moving.</p></div><form onSubmit={login}><Field label="Email address"><input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field><Field label="Password"><input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} /></Field><Notice>{error}</Notice><button className="button button-primary button-wide" disabled={busy}>{busy ? <Spinner /> : <ShieldCheck size={17} />}{busy ? 'Signing in...' : 'Sign in to workshop'}<ArrowRight size={17} /></button></form><p className="form-footer">Private access for the workshop team.</p></div></div>;
 }
 
 function Modal({ title, onClose, children, className = '' }) {
@@ -725,7 +725,7 @@ function Dashboard({ session }) {
   const title = view === 'agenda' ? 'Workshop agenda' : view === 'payments' ? 'Payment tracking' : view === 'history' ? 'Completed jobs' : view === 'cards' ? 'Job cards' : view === 'admin' ? 'Admin centre' : view === 'mot' ? 'MOT reminders' : 'Checks';
 
   return <div className="admin-layout">
-    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><div className="sidebar-label">YOUR WORKSHOP</div><nav>{nav.map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setInfo(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">{(profile?.full_name || 'A').slice(0, 1).toUpperCase()}</div><div><strong>{profile?.full_name || 'Workshop team'}</strong><small>{profile?.role || session.user.email}</small></div><button onClick={() => setChangingPassword(true)} aria-label="Change password" title="Change password"><KeyRound size={17} /></button><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
+    <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}><img className="sidebar-logo" src="/brand/logo-white.svg" alt="Beechwood Car Care, Newport" width="150" height="88" /><div className="sidebar-label">YOUR WORKSHOP</div><nav>{nav.map(({ key, icon: Icon, label }) => <button key={key} className={view === key ? 'nav-active' : ''} onClick={() => { setView(key); setSearch(''); setInfo(''); setMobileMenu(false); }}><Icon size={19} />{label}</button>)}<a href="/" target="_blank" rel="noreferrer"><House size={19} /> Public booking page <ArrowRight size={15} /></a></nav><div className="sidebar-bottom"><div className="owner-avatar">{(profile?.full_name || 'A').slice(0, 1).toUpperCase()}</div><div><strong>{profile?.full_name || 'Workshop team'}</strong><small>{profile?.role || session.user.email}</small></div><button onClick={() => setChangingPassword(true)} aria-label="Change password" title="Change password"><KeyRound size={17} /></button><button onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></button></div></aside>
     {mobileMenu && <button className="sidebar-overlay" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <div className="admin-main">
       <header className="admin-topbar"><button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button><span><span className="dot" /> WORKSHOP MANAGEMENT</span><span className="topbar-date">{dateLabel(localDate(), { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></header>
@@ -743,7 +743,7 @@ function Dashboard({ session }) {
             {loading ? <div className="empty-state"><Spinner /><h3>Loading your workshop...</h3></div> : !authorized ? <div className="empty-state"><ShieldCheck size={34} /><h3>Workshop connection required</h3><p>Check the message above, then retry.</p></div> : filtered.length === 0 ? <div className="empty-state"><CalendarDays size={36} /><h3>{search ? 'No matching vehicles.' : view === 'agenda' ? 'A little breathing room.' : 'All clear.'}</h3><p>{search ? 'Try a different name or registration.' : view === 'agenda' ? 'No confirmed jobs for this day. Add a booking or choose another date.' : 'There are no jobs to show in this view.'}</p></div> : filtered.map((job) => <JobRow key={job.id} job={job} view={view} showCosts={showCosts} onOpen={() => open(job, view === 'history' && showCosts ? 'receipt' : 'booking')} />)}
           </div><div className="agenda-footer"><span>{filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}{view === 'agenda' ? ' on this day' : ' in this view'}</span><span><span className="dot" /> Refreshes every 30 seconds</span></div>
         </section>}
-        <footer className="dashboard-footer">Andy's Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
+        <footer className="dashboard-footer">Beechwood Car Care <span>Less admin. More time under the bonnet.</span></footer>
       </main>
     </div>
     {editing && <JobEditor key={editing.job.id} job={editing.job} initialTab={editing.tab} can={can} onClose={() => setEditing(null)} onSaved={savedJob} onDeleted={(id) => { ++requestRef.current; setJobs((current) => current.filter((job) => job.id !== id)); void load(); }} />}

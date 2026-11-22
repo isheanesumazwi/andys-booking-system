@@ -2,7 +2,7 @@ export const JOB_STATUSES = ['Pending Confirmation', 'Booked', 'In Progress', 'R
 // Finished one way or another, so these never block a slot, a vehicle or the day's line-up.
 export const CLOSED_STATUSES = ['Completed', 'Cancelled', 'No-show'];
 export const PAYMENT_STATUSES = ['Unpaid', 'Paid', 'Pay Later'];
-export const WORKSHOP = { name: "Andy's Beechwood Car Care", address: '1A Warwick Rd, Newport NP19 8JJ, United Kingdom', phone: '+44 7915 392353', email: 'andybeechwoodcarcare@gmail.com' };
+export const WORKSHOP = { name: "Beechwood Car Care", address: '1A Warwick Rd, Newport NP19 8JJ, United Kingdom', phone: '+44 7915 392353', email: 'andybeechwoodcarcare@gmail.com' };
 export const SERVICE_PACKAGES = [
   ['Interim service', 'Oil and oil filter change'],
   ['Full service', 'Oil, oil and air filter change, plus a top-up of brake fluid and coolant if needed'],

@@ -1,4 +1,4 @@
-# Andy's Beechwood Car Care
+# Beechwood Car Care
 
 A mobile-first React / Vite / Tailwind application with Supabase authentication and database storage. Deploy the frontend and vehicle lookup function together on Netlify or Vercel.
 
