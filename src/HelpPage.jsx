@@ -12,6 +12,8 @@ const questions = (settings) => [
   ['What is included in each service?', SERVICE_PACKAGES.map(([name, description]) => `${name}: ${description}.`).join(' ')],
   ['Do you offer any free checks?', 'Yes. We offer a free battery check and a free suspension and safety check.'],
   ['Can I change or cancel my booking?', 'Yes. Use the private link on your confirmation screen or in your confirmation email to move or cancel it. You can also call or email the workshop with your registration and booking date.'],
+  ['I have not received my confirmation email. Where is it?', `Please check your spam or junk folder for an email from ${WORKSHOP.name}. If you find it there, mark it as "not spam" so future emails reach your inbox.`],
+  ['Why did your email go to my spam folder?', `Our website is still being set up, so for now our emails are sent from a standard Gmail address rather than our own business address. Some email providers treat that with caution. The email is genuine and safe to open. We are moving to our own email address soon, which will stop this happening.`],
   ['What if my registration is not found?', 'You can enter the make and model manually and continue booking. Some vehicles may not be available through the MOT history lookup.'],
   ['How much will the work cost?', 'Contact the workshop to discuss your vehicle and the work needed. Submitting a booking request does not provide a price quote.'],
   ['Where is the workshop?', `You can find us at ${address}. Use Go now below to open directions in your maps app.`],

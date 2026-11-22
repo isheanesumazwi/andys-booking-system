@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, BellRing, CalendarDays, CarFront, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3, KeyRound, ClipboardList, CreditCard, Download, House, Mail, LoaderCircle, LogOut, Menu, Plus, Printer, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import supabase, { configurationError } from './supabaseClient.js';
-import { addDays, CLOSED_STATUSES, dateLabel, isAutoConfirmed, JOB_STATUSES, jobsCsv, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, slotTimes, validEmail, validPostcode, validRegistration, validateBooking } from './utils.js';
+import { addDays, CLOSED_STATUSES, dateLabel, isAutoConfirmed, JOB_STATUSES, jobsCsv, localDate, jobContact, jobMatches, money, normalizePostcode, normalizeRegistration, PAYMENT_STATUSES, SERVICE_PACKAGES, SERVICES, slotLabel, slotTimes, validEmail, validPostcode, validRegistration, validateBooking, WORKSHOP } from './utils.js';
 import { cardTotals, JOB_PHOTO_BUCKET, normalizeCard } from './jobCard.js';
 import AdminCentre, { ChangePassword } from './AdminCentre.jsx';
 import { AddressFields, AddToCalendar, Field, SlotPicker, Turnstile, TURNSTILE_SITE_KEY, useBookingSettings } from './BookingFields.jsx';
@@ -231,7 +231,7 @@ function BookingForm({ admin = false, onCreated }) {
     <p>{admin ? 'The vehicle is now on your workshop agenda.' : sent === 'Booked' ? `Your ${form.service_type.trim()} is confirmed. See you then!` : changing ? 'Your change request has been sent. Andy will review it, and your existing booking stays in place until then.' : 'Booking request sent! Andy will review your request shortly.'}</p>
     <div className="confirmation-details"><strong className="registration">{registration}</strong><span>{dateLabel(form.booking_date)} at {slotLabel(form.booking_time)}</span></div>
     {!admin && sent !== 'Booked' && <p className="muted">This is a request, not a confirmed appointment. Andy will contact you on the phone number you provided.</p>}
-    {!admin && emailed && <p className="muted">We've emailed the details to {form.email.trim()}.</p>}
+    {!admin && emailed && <p className="muted">We've emailed the details to {form.email.trim()}. Can't see it? Please check your spam or junk folder for an email from {WORKSHOP.name}. Our website is still being set up, so some providers may flag our emails for now.</p>}
     {!admin && <AddToCalendar booking={{ booking_date: form.booking_date, booking_time: form.booking_time, service_type: form.service_type.trim(), reg_no: registration, status: sent }} uid={manageToken || `${registration}-${form.booking_date}`} />}
     {manageToken && <p className="manage-link"><a href={`/manage?t=${manageToken}`}>Change or cancel this booking</a><small>Keep this link. It's also in your email.</small></p>}
     <button className="button button-outline" onClick={startAgain}>Make another booking <ArrowRight size={16} /></button>
@@ -283,7 +283,7 @@ function BookingForm({ admin = false, onCreated }) {
           <Field label="Last name"><input autoComplete="family-name" required maxLength={80} placeholder="e.g. Taylor" value={form.last_name} onChange={(e) => change('last_name', e.target.value)} /></Field>
         </div>
         <Field label="Phone number" hint="We'll use this to confirm your booking."><input type="tel" inputMode="tel" autoComplete="tel" required maxLength={25} placeholder="e.g. 07700 900123" value={form.phone} onChange={(e) => change('phone', e.target.value)} /></Field>
-        <Field label={admin ? 'Email (optional)' : 'Email'}><input type="email" inputMode="email" autoComplete="email" autoCapitalize="off" spellCheck={false} required={!admin} maxLength={254} placeholder="e.g. james@example.com" value={form.email} onChange={(e) => change('email', e.target.value)} /></Field>
+        <Field label={admin ? 'Email (optional)' : 'Email'} hint={admin ? undefined : `We'll email your confirmation. If it isn't in your inbox, check your spam or junk folder for ${WORKSHOP.name}.`}><input type="email" inputMode="email" autoComplete="email" autoCapitalize="off" spellCheck={false} required={!admin} maxLength={254} placeholder="e.g. james@example.com" value={form.email} onChange={(e) => change('email', e.target.value)} /></Field>
       </>}
       {step === 3 && <AddressFields form={form} onChange={(patch) => { setError(''); setForm((current) => ({ ...current, ...patch })); }} />}
       {step === 4 && <SlotPicker admin={admin} date={form.booking_date} time={form.booking_time} refresh={slotRefresh} onDate={chooseDate} onTime={chooseTime} />}
