@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { addressLookup } from './server/address.js';
 import { bookOnline, manageBooking, notifyCustomer } from './server/bookings.js';
+import { submitFeedback } from './server/feedback.js';
 import { gmailSender } from './server/mail.js';
 import { staffAccount } from './server/staff.js';
 import { vehicleLookup } from './server/vehicle.js';
@@ -46,6 +47,7 @@ export default defineConfig(({ mode }) => ({
         };
         const deps = (req) => ({ send: gmailSender(env), site: env.SITE_URL || `http://${req.headers.host}` });
         server.middlewares.use('/api/book', async (req, res) => reply(res, await bookOnline(req.method, await readBody(req), env, deps(req))));
+        server.middlewares.use('/api/feedback', async (req, res) => reply(res, await submitFeedback(req.method, await readBody(req), env, deps(req))));
         server.middlewares.use('/api/manage', async (req, res) => {
           const token = new URL(req.url, 'http://localhost').searchParams.get('t');
           reply(res, await manageBooking(req.method, token, req.method === 'POST' ? await readBody(req) : null, env, deps(req)));

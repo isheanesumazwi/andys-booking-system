@@ -4,16 +4,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BOOKING_FIELDS = ['first_name', 'last_name', 'phone', 'email', 'reg_no', 'make', 'model', 'year', 'engine_capacity',
   'booking_date', 'booking_time', 'service_type', 'customer_address', 'customer_postcode', 'change_request', 'privacy_accepted'];
 
-class UserError extends Error {
+export class UserError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
 
-function connection(env) {
+export function connection(env) {
   return { url: env.SUPABASE_URL || env.VITE_SUPABASE_URL, anonKey: env.VITE_SUPABASE_ANON_KEY, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY };
 }
 
 // Messages raised by our database functions are written for customers, so they are passed on.
-async function rpc(url, key, name, args, fetcher, authorization = `Bearer ${key}`) {
+export async function rpc(url, key, name, args, fetcher, authorization = `Bearer ${key}`) {
   const response = await fetcher(`${url}/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: { apikey: key, Authorization: authorization, 'Content-Type': 'application/json' },
@@ -42,7 +42,7 @@ async function deliver(send, messages) {
   }
 }
 
-async function passedSecurityCheck(token, env, fetcher) {
+export async function passedSecurityCheck(token, env, fetcher) {
   if (!env.TURNSTILE_SECRET_KEY) return true;
   if (typeof token !== 'string' || !token || token.length > 2048) return false;
   const response = await fetcher('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
